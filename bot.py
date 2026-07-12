@@ -215,8 +215,7 @@ class SellerStates(StatesGroup):
     adding_category = State()
     adding_product_name = State()
     adding_product_price = State()
-
-def main_menu_kb(uid):
+    def main_menu_kb(uid):
     shop = get_shop(uid)
     kb = [[InlineKeyboardButton(text="🛍 Купить", callback_data="shops_list")]]
     if shop:
@@ -448,8 +447,7 @@ async def cart_remove(cb: CallbackQuery):
     if p:
         text = f"<b>{p['name']}</b>\n💰 Цена: <b>{p['price']}🪙</b>"
         await cb.message.edit_text(text, reply_markup=product_detail_kb(pid, cb.from_user.id), parse_mode="HTML")
-
-@router.callback_query(F.data == "view_cart")
+        @router.callback_query(F.data == "view_cart")
 async def view_cart_handler(cb: CallbackQuery):
     items = get_cart(cb.from_user.id)
     total = get_cart_total(cb.from_user.id)
@@ -496,4 +494,167 @@ async def process_game_id(msg: Message, state: FSMContext, bot: Bot):
     await msg.answer(text, reply_markup=main_menu_kb(uid), parse_mode="HTML")
     await state.clear()
     stext = f"🔔 <b>Новый заказ №{oid}!</b>\n👤 @{msg.from_user.username or '—'}\n📧 ID: <b>{gid}</b>\n\n📦 Товары:\n"
-    for i in orde
+    for i in order['items']:
+        stext += f"• {i['product_name']} x{i['quantity']} = {i['price']*i['quantity']}🪙\n"
+    stext += f"\n💰 Итого: <b>{total}🪙</b>"
+    await bot.send_message(seller_id, stext, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Принять", callback_data=f"acc_{oid}")],
+        [InlineKeyboardButton(text="❌ Отклонить", callback_data=f"rej_{oid}")],
+    ]))
+
+@router.callback_query(F.data == "my_orders")
+async def buyer_orders(cb: CallbackQuery):
+    orders = get_buyer_orders(cb.from_user.id)
+    if not orders:
+        await cb.message.edit_text("📭 Нет заказов.", reply_markup=main_menu_kb(cb.from_user.id))
+        return
+    text = "📦 <b>Ваши заказы:</b>\n\n"
+    for o in orders:
+        emoji = {"pending": "⏳", "accepted": "✅", "ready": "🎉", "rejected": "❌"}
+        text += f"🆔 №{o['id']} — {o['total_amount']}🪙 | {emoji.get(o['status'], '?')} {o['status']}\n"
+    await cb.message.edit_text(text, reply_markup=main_menu_kb(cb.from_user.id), parse_mode="HTML")
+
+@router.callback_query(F.data == "seller_categories")
+async def seller_cats(cb: CallbackQuery):
+    await cb.message.edit_text("📋 Категории:", reply_markup=seller_categories_kb(cb.from_user.id))
+
+@router.callback_query(F.data == "sadd_category")
+async def sadd_cat(cb: CallbackQuery, state: FSMContext):
+    await cb.message.edit_text("Название категории:")
+    await state.set_state(SellerStates.adding_category)
+
+@router.message(SellerStates.adding_category)
+async def sadd_cat_done(msg: Message, state: FSMContext):
+    add_category(msg.from_user.id, msg.text.strip())
+    await msg.answer("✅ Создана!", reply_markup=seller_categories_kb(msg.from_user.id))
+    await state.clear()
+
+@router.callback_query(F.data.startswith("sdelcat_"))
+async def sdel_cat(cb: CallbackQuery):
+    delete_category(int(cb.data.split("_")[1]))
+    await cb.answer("🗑 Удалена")
+    await seller_cats(cb)
+
+@router.callback_query(F.data == "seller_products_menu")
+async def seller_prods_menu(cb: CallbackQuery):
+    await cb.message.edit_text("Выберите категорию:", reply_markup=seller_products_menu_kb(cb.from_user.id))
+
+@router.callback_query(F.data.startswith("sprodcat_"))
+async def seller_prods(cb: CallbackQuery):
+    cat_id = int(cb.data.split("_")[1])
+    prods = get_products(cat_id)
+    kb = []
+    for p in prods:
+        kb.append([InlineKeyboardButton(text=f"🗑 {p['name']} — {p['price']}🪙", callback_data=f"sdelprod_{p['id']}")])
+    kb.append([InlineKeyboardButton(text="➕ Добавить", callback_data=f"saddprod_{cat_id}")])
+    kb.append([InlineKeyboardButton(text="🔙 Назад", callback_data="seller_products_menu")])
+    text = "Товары:\n" + "\n".join([f"• {p['name']} — {p['price']}🪙" for p in prods]) if prods else "Нет товаров."
+    await cb.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+
+@router.callback_query(F.data.startswith("saddprod_"))
+async def sadd_prod(cb: CallbackQuery, state: FSMContext):
+    await state.update_data(prod_cat=int(cb.data.split("_")[1]))
+    await cb.message.edit_text("📝 Название товара:")
+    await state.set_state(SellerStates.adding_product_name)
+
+@router.message(SellerStates.adding_product_name)
+async def sadd_prod_name(msg: Message, state: FSMContext):
+    await state.update_data(prod_name=msg.text.strip())
+    await msg.answer("💰 Цена (число):")
+    await state.set_state(SellerStates.adding_product_price)
+
+@router.message(SellerStates.adding_product_price)
+async def sadd_prod_price(msg: Message, state: FSMContext):
+    try:
+        price = int(msg.text.strip())
+    except:
+        await msg.answer("❌ Число!")
+        return
+    data = await state.get_data()
+    add_product(data['prod_cat'], msg.from_user.id, data['prod_name'], price)
+    await msg.answer("✅ Готово!", reply_markup=my_shop_kb())
+    await state.clear()
+
+@router.callback_query(F.data.startswith("sdelprod_"))
+async def sdel_prod(cb: CallbackQuery):
+    delete_product(int(cb.data.split("_")[1]))
+    await cb.answer("🗑 Удалён")
+    await cb.message.edit_text("🗑 Товар удалён.", reply_markup=my_shop_kb())
+
+@router.callback_query(F.data == "seller_orders")
+async def seller_orders(cb: CallbackQuery):
+    orders = get_pending_orders(cb.from_user.id)
+    if not orders:
+        await cb.message.edit_text("📭 Нет заказов.", reply_markup=my_shop_kb())
+        return
+    text = "📥 Заказы:\n\n"
+    for oid in orders:
+        o = get_order(oid)
+        if o:
+            text += f"🆔 №{oid} — {o['total_amount']}🪙 | {o['buyer_game_id']}\n"
+    await cb.message.edit_text(text, reply_markup=my_shop_kb())
+
+@router.callback_query(F.data.startswith("acc_"))
+async def accept_order(cb: CallbackQuery, state: FSMContext):
+    oid = int(cb.data.split("_")[1])
+    order = get_order(oid)
+    if order['seller_id'] != cb.from_user.id:
+        await cb.answer("❌ Не ваш заказ!")
+        return
+    await state.update_data(oid=oid)
+    await cb.message.edit_text(f"⏳ Срок заказа №{oid}?\nНапример: 1-2 дня")
+    await state.set_state(OrderStates.waiting_for_deadline)
+
+@router.message(OrderStates.waiting_for_deadline)
+async def deadline_done(msg: Message, state: FSMContext, bot: Bot):
+    dl = msg.text.strip()
+    data = await state.get_data()
+    oid = data['oid']
+    update_order_status(oid, 'accepted', deadline=dl)
+    order = get_order(oid)
+    await bot.send_message(order['buyer_id'],
+        f"✅ Заказ №{oid} принят!\n⏳ Срок: <b>{dl}</b>\n💰 Сумма: <b>{order['total_amount']}🪙</b>",
+        parse_mode="HTML")
+    await msg.answer(f"✅ Принят. Срок: {dl}",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="✅ Готов", callback_data=f"ready_{oid}")]]))
+    await state.clear()
+
+@router.callback_query(F.data.startswith("rej_"))
+async def reject_order(cb: CallbackQuery, bot: Bot):
+    oid = int(cb.data.split("_")[1])
+    order = get_order(oid)
+    if order['seller_id'] != cb.from_user.id:
+        await cb.answer("❌ Не ваш заказ!")
+        return
+    update_order_status(oid, 'rejected')
+    await bot.send_message(order['buyer_id'], f"❌ Заказ №{oid} отклонён.")
+    await cb.message.edit_text(f"❌ Заказ №{oid} отклонён.")
+
+@router.callback_query(F.data.startswith("ready_"))
+async def ready_order(cb: CallbackQuery, bot: Bot):
+    oid = int(cb.data.split("_")[1])
+    order = get_order(oid)
+    if order['seller_id'] != cb.from_user.id:
+        await cb.answer("❌ Не ваш заказ!")
+        return
+    sgid = get_seller_game_id(cb.from_user.id)
+    update_order_status(oid, 'ready')
+    text = f"✅ <b>Заказ №{oid} готов!</b>\n\n📦 Товары:\n"
+    for i in order['items']:
+        text += f"• {i['product_name']} x{i['quantity']}\n"
+    text += f"\n💰 К оплате: <b>{order['total_amount']}🪙</b>\n📧 Ваш ID: <b>{order['buyer_game_id']}</b>\n\n👉 Отправьте <b>{order['total_amount']}🪙</b> на:\n<b>{sgid}</b>"
+    await bot.send_message(order['buyer_id'], text, parse_mode="HTML")
+    await cb.message.edit_text(f"✅ Заказ №{oid} готов.", reply_markup=my_shop_kb())
+
+async def main():
+    logging.basicConfig(level=logging.INFO)
+    init_db()
+    print("✅ Маркетплейс запущен!")
+    bot = Bot(token=BOT_TOKEN)
+    dp = Dispatcher(storage=MemoryStorage())
+    dp.include_router(router)
+    await dp.start_polling(bot)
+
+if __name__ == "__main__":
+    asyncio.run(main())
