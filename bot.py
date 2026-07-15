@@ -526,4 +526,210 @@ async def seller_menu(cb: CallbackQuery):
 
 
 @router.callback_query(F.data == "create_shop")
-async
+async def create_shop(cb: CallbackQuery, state: FSMContext):
+    await cb.message.edit_text("📝 Название магазина:")
+    await state.set_state(ShopSetup.waiting_for_shop_name)
+
+
+@router.message(ShopSetup.waiting_for_shop_name)
+async def shop_name(msg: Message, state: FSMContext):
+    await state.update_data(shop_name=msg.text.strip())
+    await msg.answer("🎮 Ваш игровой ID:")
+    await state.set_state(ShopSetup.waiting_for_game_id)
+
+
+@router.message(ShopSetup.waiting_for_game_id)
+async def game_id(msg: Message, state: FSMContext):
+    await state.update_data(game_id=msg.text.strip())
+    await msg.answer("🔐 Пароль для входа:")
+    await state.set_state(ShopSetup.waiting_for_password)
+
+
+@router.message(ShopSetup.waiting_for_password)
+async def password(msg: Message, state: FSMContext):
+    data = await state.get_data()
+    set_shop(msg.from_user.id, data['shop_name'], data['game_id'], msg.text.strip())
+    await msg.answer(f"✅ Магазин «{data['shop_name']}» создан!\nПароль: {msg.text.strip()}")
+    await state.clear()
+    await seller_inside(msg)
+
+
+@router.callback_query(F.data.startswith("login_shop_"))
+async def login_shop(cb: CallbackQuery, state: FSMContext):
+    await state.update_data(login_shop_id=int(cb.data.split("_")[2]))
+    await cb.message.edit_text("🔐 Пароль:")
+    await state.set_state(SellerStates.waiting_for_password_login)
+
+
+@router.message(SellerStates.waiting_for_password_login)
+async def check_password(msg: Message, state: FSMContext):
+    data = await state.get_data()
+    conn = get_conn()
+    shop = conn.execute("SELECT shop_name, shop_password FROM users WHERE user_id=?", (data['login_shop_id'],)).fetchone()
+    conn.close()
+    if shop and shop['shop_password'] == msg.text.strip():
+        await msg.answer(f"✅ Добро пожаловать в «{shop['shop_name']}»!")
+        await state.clear()
+        await seller_inside(msg)
+    else:
+        await msg.answer("❌ Неверный пароль!")
+        await state.clear()
+
+
+async def seller_inside(msg):
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="➕ Создать категорию", callback_data="add_category")],
+        [InlineKeyboardButton(text="🗑 Удалить категорию", callback_data="del_category")],
+        [InlineKeyboardButton(text="➕ Добавить товар", callback_data="add_product")],
+        [InlineKeyboardButton(text="🗑 Удалить товар", callback_data="del_product")],
+        [InlineKeyboardButton(text="📥 Заказы", callback_data="seller_orders")],
+        [InlineKeyboardButton(text="🔙 Главное меню", callback_data="start_menu")],
+    ])
+    await msg.answer("🏪 Управление:", reply_markup=kb)
+
+
+@router.callback_query(F.data == "seller_orders")
+async def seller_orders(cb: CallbackQuery):
+    orders = get_pending_orders(cb.from_user.id)
+    if not orders:
+        await cb.message.edit_text("📭 Нет заказов.")
+        return
+    text = "📥 <b>Активные заказы:</b>\n\n"
+    for oid in orders:
+        o = get_order(oid)
+        if o:
+            text += f"🆔 №{oid} — {o['total_amount']} | {o['buyer_game_id']}\n"
+    await cb.message.edit_text(text, parse_mode="HTML")
+
+
+@router.callback_query(F.data == "add_category")
+async def add_category_start(cb: CallbackQuery, state: FSMContext):
+    await cb.message.edit_text("📝 Название категории:")
+    await state.set_state(SellerStates.adding_category)
+
+
+@router.message(SellerStates.adding_category)
+async def add_category_done(msg: Message, state: FSMContext):
+    add_category(msg.from_user.id, msg.text.strip())
+    await state.clear()
+    await msg.answer(f"✅ «{msg.text.strip()}» создана!")
+    await seller_inside(msg)
+
+
+@router.callback_query(F.data == "del_category")
+async def del_category_start(cb: CallbackQuery):
+    cats = get_categories(cb.from_user.id)
+    if not cats:
+        await cb.message.edit_text("Нет категорий.")
+        return
+    kb = []
+    for cat in cats:
+        kb.append([InlineKeyboardButton(text=f"🗑 {cat['name']}", callback_data=f"delcat_{cat['id']}")])
+    await cb.message.edit_text("Выберите для удаления:", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+
+
+@router.callback_query(F.data.startswith("delcat_"))
+async def del_category(cb: CallbackQuery):
+    delete_category(int(cb.data.split("_")[1]))
+    await cb.answer("🗑 Удалена!")
+    await seller_inside_back(cb)
+
+
+@router.callback_query(F.data == "add_product")
+async def add_product_start(cb: CallbackQuery, state: FSMContext):
+    cats = get_categories(cb.from_user.id)
+    if not cats:
+        await cb.message.edit_text("Сначала создайте категорию.")
+        return
+    kb = []
+    for cat in cats:
+        kb.append([InlineKeyboardButton(text=cat['name'], callback_data=f"pickcat_{cat['id']}")])
+    await cb.message.edit_text("Выберите категорию:", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+
+
+@router.callback_query(F.data == "del_product")
+async def del_product_start(cb: CallbackQuery):
+    cats = get_categories(cb.from_user.id)
+    if not cats:
+        await cb.message.edit_text("Нет категорий.")
+        return
+    kb = []
+    for cat in cats:
+        kb.append([InlineKeyboardButton(text=cat['name'], callback_data=f"pickdelcat_{cat['id']}")])
+    await cb.message.edit_text("Выберите категорию:", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+
+
+@router.callback_query(F.data.startswith("pickdelcat_"))
+async def pick_del_category(cb: CallbackQuery):
+    prods = get_products(int(cb.data.split("_")[1]))
+    if not prods:
+        await cb.message.edit_text("Нет товаров.")
+        return
+    kb = []
+    for p in prods:
+        curr = plural(p['currency'], p['price'])
+        kb.append([InlineKeyboardButton(text=f"🗑 {p['name']} — {p['price']} {curr}", callback_data=f"delprod_{p['id']}")])
+    await cb.message.edit_text("Выберите товар:", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+
+
+@router.callback_query(F.data.startswith("delprod_"))
+async def del_product(cb: CallbackQuery):
+    delete_product(int(cb.data.split("_")[1]))
+    await cb.answer("🗑 Удалён!")
+    await seller_inside_back(cb)
+
+
+@router.callback_query(F.data.startswith("pickcat_"))
+async def pick_category(cb: CallbackQuery, state: FSMContext):
+    await state.update_data(prod_cat=int(cb.data.split("_")[1]))
+    await cb.message.edit_text("📝 Название товара:")
+    await state.set_state(SellerStates.adding_product_name)
+
+
+@router.message(SellerStates.adding_product_name)
+async def product_name(msg: Message, state: FSMContext):
+    await state.update_data(prod_name=msg.text.strip())
+    await msg.answer("💰 Цена (число):")
+    await state.set_state(SellerStates.adding_product_price)
+
+
+@router.message(SellerStates.adding_product_price)
+async def product_price(msg: Message, state: FSMContext):
+    try:
+        price = int(msg.text.strip())
+    except ValueError:
+        await msg.answer("❌ Число!")
+        return
+    await state.update_data(prod_price=price)
+    await msg.answer("💎 Валюта (например: монета, рубль, алмаз):")
+    await state.set_state(SellerStates.adding_product_currency)
+
+
+@router.message(SellerStates.adding_product_currency)
+async def product_currency(msg: Message, state: FSMContext):
+    data = await state.get_data()
+    currency = msg.text.strip()
+    add_product(data['prod_cat'], msg.from_user.id, data['prod_name'], data['prod_price'], currency)
+    curr = plural(currency, data['prod_price'])
+    await state.clear()
+    await msg.answer(f"✅ «{data['prod_name']}» за {data['prod_price']} {curr} добавлен!")
+    await seller_inside(msg)
+
+
+@router.callback_query(F.data == "seller_inside_back")
+async def seller_inside_back(cb: CallbackQuery):
+    await cb.message.delete()
+    await seller_inside(cb.message)
+
+
+async def main():
+    logging.basicConfig(level=logging.INFO)
+    init_db()
+    bot = Bot(token=BOT_TOKEN)
+    dp = Dispatcher(storage=MemoryStorage())
+    dp.include_router(router)
+    await dp.start_polling(bot)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
