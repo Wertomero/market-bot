@@ -522,7 +522,7 @@ async def accept_order(cb: CallbackQuery, state: FSMContext, bot: Bot):
     order = get_order(oid)
     if order['seller_id'] != cb.from_user.id:
                 await cb.answer("❌ Не ваш заказ!")
-        return
+                return
     await state.update_data(oid=oid)
     await cb.message.edit_text(f"⏳ Введите срок выполнения заказа №{oid}:\nНапример: 1-2 дня, 24 часа")
     await state.set_state(OrderStates.waiting_for_deadline)
