@@ -23,7 +23,7 @@ def init_db():
     c = conn.cursor()
     c.execute("CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY, username TEXT, shop_name TEXT, seller_game_id TEXT, shop_password TEXT)")
     c.execute("CREATE TABLE IF NOT EXISTS categories (id INTEGER PRIMARY KEY AUTOINCREMENT, seller_id INTEGER, name TEXT)")
-    c.execute("CREATE TABLE IF NOT EXISTS products (id INTEGER PRIMARY KEY AUTOINCREMENT, category_id INTEGER, seller_id INTEGER, name TEXT, price INTEGER)")
+    c.execute("CREATE TABLE IF NOT EXISTS products (id INTEGER PRIMARY KEY AUTOINCREMENT, category_id INTEGER, seller_id INTEGER, name TEXT, price INTEGER, currency TEXT)")
     conn.commit()
     conn.close()
 
@@ -49,13 +49,6 @@ def get_shop(uid):
     return dict(r) if r and r['shop_name'] else None
 
 
-def get_shop_by_name(shop_name):
-    conn = get_conn()
-    r = conn.execute("SELECT user_id, shop_name, seller_game_id, shop_password FROM users WHERE shop_name=?", (shop_name,)).fetchone()
-    conn.close()
-    return dict(r) if r else None
-
-
 def get_all_shops():
     conn = get_conn()
     shops = [dict(r) for r in conn.execute("SELECT user_id, shop_name FROM users WHERE shop_name IS NOT NULL").fetchall()]
@@ -77,9 +70,9 @@ def get_categories(seller_id):
     return cats
 
 
-def add_product(cat_id, seller_id, name, price):
+def add_product(cat_id, seller_id, name, price, currency):
     conn = get_conn()
-    conn.execute("INSERT INTO products (category_id, seller_id, name, price) VALUES (?,?,?,?)", (cat_id, seller_id, name, price))
+    conn.execute("INSERT INTO products (category_id, seller_id, name, price, currency) VALUES (?,?,?,?,?)", (cat_id, seller_id, name, price, currency))
     conn.commit()
     conn.close()
 
@@ -102,6 +95,7 @@ class SellerStates(StatesGroup):
     adding_category = State()
     adding_product_name = State()
     adding_product_price = State()
+    adding_product_currency = State()
 
 
 router = Router()
@@ -115,6 +109,15 @@ async def start(msg: Message):
         [InlineKeyboardButton(text="🏪 Я продавец", callback_data="seller_menu")],
     ])
     await msg.answer("Добро пожаловать! Кто вы?", reply_markup=kb)
+
+
+@router.callback_query(F.data == "start_menu")
+async def start_menu(cb: CallbackQuery):
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🛒 Я покупатель", callback_data="buyer")],
+        [InlineKeyboardButton(text="🏪 Я продавец", callback_data="seller_menu")],
+    ])
+    await cb.message.edit_text("Добро пожаловать! Кто вы?", reply_markup=kb)
 
 
 # ========== ПОКУПАТЕЛЬ ==========
@@ -131,15 +134,6 @@ async def buyer(cb: CallbackQuery):
         kb.append([InlineKeyboardButton(text=f"🏪 {s['shop_name']}", callback_data=f"shop_{s['user_id']}")])
     kb.append([InlineKeyboardButton(text="🔙 Назад", callback_data="start_menu")])
     await cb.message.edit_text("🏪 Выберите магазин:", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
-
-
-@router.callback_query(F.data == "start_menu")
-async def start_menu(cb: CallbackQuery):
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🛒 Я покупатель", callback_data="buyer")],
-        [InlineKeyboardButton(text="🏪 Я продавец", callback_data="seller_menu")],
-    ])
-    await cb.message.edit_text("Добро пожаловать! Кто вы?", reply_markup=kb)
 
 
 @router.callback_query(F.data.startswith("shop_"))
@@ -169,7 +163,7 @@ async def show_products(cb: CallbackQuery):
         return
     text = "📦 Товары:\n\n"
     for p in prods:
-        text += f"• {p['name']} — {p['price']}🪙\n"
+        text += f"• {p['name']} — {p['price']} {p['currency']}\n"
     await cb.message.edit_text(text)
 
 
@@ -212,7 +206,7 @@ async def password(msg: Message, state: FSMContext):
     set_shop(msg.from_user.id, data['shop_name'], data['game_id'], msg.text.strip())
     await msg.answer(f"✅ Магазин «{data['shop_name']}» создан!\nПароль: {msg.text.strip()}\nЗапомните его!")
     await state.clear()
-    await seller_inside(msg.from_user.id, msg)
+    await seller_inside(msg)
 
 
 # ========== ВХОД В МАГАЗИН ==========
@@ -234,13 +228,13 @@ async def check_password(msg: Message, state: FSMContext):
     if shop and shop['shop_password'] == msg.text.strip():
         await msg.answer(f"✅ Добро пожаловать в «{shop['shop_name']}»!")
         await state.clear()
-        await seller_inside(shop_id, msg)
+        await seller_inside(msg)
     else:
         await msg.answer("❌ Неверный пароль!")
         await state.clear()
 
 
-async def seller_inside(shop_id, msg):
+async def seller_inside(msg):
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="➕ Создать категорию", callback_data="add_category")],
         [InlineKeyboardButton(text="➕ Добавить товар", callback_data="add_product")],
@@ -259,8 +253,9 @@ async def add_category_start(cb: CallbackQuery, state: FSMContext):
 @router.message(SellerStates.adding_category)
 async def add_category_done(msg: Message, state: FSMContext):
     add_category(msg.from_user.id, msg.text.strip())
-    await msg.answer(f"✅ Категория «{msg.text.strip()}» создана!")
     await state.clear()
+    await msg.answer(f"✅ Категория «{msg.text.strip()}» создана!")
+    await seller_inside(msg)
 
 
 # ========== ТОВАРЫ ==========
@@ -298,10 +293,18 @@ async def product_price(msg: Message, state: FSMContext):
     except ValueError:
         await msg.answer("❌ Введите число!")
         return
+    await state.update_data(prod_price=price)
+    await msg.answer("💎 Введите название валюты (например: монеты, рубли, алмазы):")
+    await state.set_state(SellerStates.adding_product_currency)
+
+
+@router.message(SellerStates.adding_product_currency)
+async def product_currency(msg: Message, state: FSMContext):
     data = await state.get_data()
-    add_product(data['prod_cat'], msg.from_user.id, data['prod_name'], price)
-    await msg.answer(f"✅ Товар «{data['prod_name']}» за {price}🪙 добавлен!")
+    add_product(data['prod_cat'], msg.from_user.id, data['prod_name'], data['prod_price'], msg.text.strip())
     await state.clear()
+    await msg.answer(f"✅ Товар «{data['prod_name']}» за {data['prod_price']} {msg.text.strip()} добавлен!")
+    await seller_inside(msg)
 
 
 async def main():
