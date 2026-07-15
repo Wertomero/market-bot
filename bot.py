@@ -63,6 +63,14 @@ def add_category(seller_id, name):
     conn.close()
 
 
+def delete_category(cat_id):
+    conn = get_conn()
+    conn.execute("DELETE FROM categories WHERE id=?", (cat_id,))
+    conn.execute("DELETE FROM products WHERE category_id=?", (cat_id,))
+    conn.commit()
+    conn.close()
+
+
 def get_categories(seller_id):
     conn = get_conn()
     cats = [dict(r) for r in conn.execute("SELECT * FROM categories WHERE seller_id=?", (seller_id,)).fetchall()]
@@ -77,11 +85,27 @@ def add_product(cat_id, seller_id, name, price, currency):
     conn.close()
 
 
+def delete_product(prod_id):
+    conn = get_conn()
+    conn.execute("DELETE FROM products WHERE id=?", (prod_id,))
+    conn.commit()
+    conn.close()
+
+
 def get_products(cat_id):
     conn = get_conn()
     prods = [dict(r) for r in conn.execute("SELECT * FROM products WHERE category_id=?", (cat_id,)).fetchall()]
     conn.close()
     return prods
+
+
+def plural(word, num):
+    if num % 10 == 1 and num % 100 != 11:
+        return word
+    elif 2 <= num % 10 <= 4 and not (12 <= num % 100 <= 14):
+        return word + "а"
+    else:
+        return word + "ов"
 
 
 class ShopSetup(StatesGroup):
@@ -158,12 +182,13 @@ async def show_products(cb: CallbackQuery):
     prods = get_products(cat_id)
     if not prods:
         await cb.message.edit_text("Нет товаров.", reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🔙 Назад", callback_data=f"back_from_cat_{cat_id}")]
+            [InlineKeyboardButton(text="🔙 Назад", callback_data="buyer")]
         ]))
         return
     text = "📦 Товары:\n\n"
     for p in prods:
-        text += f"• {p['name']} — {p['price']} {p['currency']}\n"
+        curr = plural(p['currency'], p['price'])
+        text += f"• {p['name']} — {p['price']} {curr}\n"
     await cb.message.edit_text(text)
 
 
@@ -237,7 +262,9 @@ async def check_password(msg: Message, state: FSMContext):
 async def seller_inside(msg):
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="➕ Создать категорию", callback_data="add_category")],
+        [InlineKeyboardButton(text="🗑 Удалить категорию", callback_data="del_category")],
         [InlineKeyboardButton(text="➕ Добавить товар", callback_data="add_product")],
+        [InlineKeyboardButton(text="🗑 Удалить товар", callback_data="del_product")],
         [InlineKeyboardButton(text="🔙 Главное меню", callback_data="start_menu")],
     ])
     await msg.answer("🏪 Управление магазином:", reply_markup=kb)
@@ -258,6 +285,27 @@ async def add_category_done(msg: Message, state: FSMContext):
     await seller_inside(msg)
 
 
+@router.callback_query(F.data == "del_category")
+async def del_category_start(cb: CallbackQuery):
+    cats = get_categories(cb.from_user.id)
+    if not cats:
+        await cb.message.edit_text("Нет категорий для удаления.")
+        return
+    kb = []
+    for cat in cats:
+        kb.append([InlineKeyboardButton(text=f"🗑 {cat['name']}", callback_data=f"delcat_{cat['id']}")])
+    kb.append([InlineKeyboardButton(text="🔙 Назад", callback_data="seller_inside_back")])
+    await cb.message.edit_text("Выберите категорию для удаления:", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+
+
+@router.callback_query(F.data.startswith("delcat_"))
+async def del_category(cb: CallbackQuery):
+    cat_id = int(cb.data.split("_")[1])
+    delete_category(cat_id)
+    await cb.answer("🗑 Категория удалена!")
+    await seller_inside_back(cb)
+
+
 # ========== ТОВАРЫ ==========
 @router.callback_query(F.data == "add_product")
 async def add_product_start(cb: CallbackQuery, state: FSMContext):
@@ -269,6 +317,42 @@ async def add_product_start(cb: CallbackQuery, state: FSMContext):
     for cat in cats:
         kb.append([InlineKeyboardButton(text=cat['name'], callback_data=f"pickcat_{cat['id']}")])
     await cb.message.edit_text("Выберите категорию:", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+
+
+@router.callback_query(F.data == "del_product")
+async def del_product_start(cb: CallbackQuery):
+    cats = get_categories(cb.from_user.id)
+    if not cats:
+        await cb.message.edit_text("Нет категорий.")
+        return
+    kb = []
+    for cat in cats:
+        kb.append([InlineKeyboardButton(text=cat['name'], callback_data=f"pickdelcat_{cat['id']}")])
+    kb.append([InlineKeyboardButton(text="🔙 Назад", callback_data="seller_inside_back")])
+    await cb.message.edit_text("Выберите категорию:", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+
+
+@router.callback_query(F.data.startswith("pickdelcat_"))
+async def pick_del_category(cb: CallbackQuery):
+    cat_id = int(cb.data.split("_")[1])
+    prods = get_products(cat_id)
+    if not prods:
+        await cb.message.edit_text("Нет товаров в этой категории.")
+        return
+    kb = []
+    for p in prods:
+        curr = plural(p['currency'], p['price'])
+        kb.append([InlineKeyboardButton(text=f"🗑 {p['name']} — {p['price']} {curr}", callback_data=f"delprod_{p['id']}")])
+    kb.append([InlineKeyboardButton(text="🔙 Назад", callback_data="del_product")])
+    await cb.message.edit_text("Выберите товар для удаления:", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+
+
+@router.callback_query(F.data.startswith("delprod_"))
+async def del_product(cb: CallbackQuery):
+    prod_id = int(cb.data.split("_")[1])
+    delete_product(prod_id)
+    await cb.answer("🗑 Товар удалён!")
+    await seller_inside_back(cb)
 
 
 @router.callback_query(F.data.startswith("pickcat_"))
@@ -294,17 +378,25 @@ async def product_price(msg: Message, state: FSMContext):
         await msg.answer("❌ Введите число!")
         return
     await state.update_data(prod_price=price)
-    await msg.answer("💎 Введите название валюты (например: монеты, рубли, алмазы):")
+    await msg.answer("💎 Введите название валюты (например: монета, рубль, алмаз):")
     await state.set_state(SellerStates.adding_product_currency)
 
 
 @router.message(SellerStates.adding_product_currency)
 async def product_currency(msg: Message, state: FSMContext):
     data = await state.get_data()
-    add_product(data['prod_cat'], msg.from_user.id, data['prod_name'], data['prod_price'], msg.text.strip())
+    currency = msg.text.strip()
+    add_product(data['prod_cat'], msg.from_user.id, data['prod_name'], data['prod_price'], currency)
+    curr = plural(currency, data['prod_price'])
     await state.clear()
-    await msg.answer(f"✅ Товар «{data['prod_name']}» за {data['prod_price']} {msg.text.strip()} добавлен!")
+    await msg.answer(f"✅ Товар «{data['prod_name']}» за {data['prod_price']} {curr} добавлен!")
     await seller_inside(msg)
+
+
+@router.callback_query(F.data == "seller_inside_back")
+async def seller_inside_back(cb: CallbackQuery):
+    await cb.message.delete()
+    await seller_inside(cb.message)
 
 
 async def main():
