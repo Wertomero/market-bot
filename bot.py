@@ -205,7 +205,6 @@ async def start_menu(cb: CallbackQuery):
     await cb.message.edit_text("Добро пожаловать! Кто вы?", reply_markup=kb)
 
 
-# ========== ПОКУПАТЕЛЬ ==========
 @router.callback_query(F.data == "buyer")
 async def buyer(cb: CallbackQuery):
     shops = get_all_shops()
@@ -277,9 +276,7 @@ async def product_detail(cb: CallbackQuery):
         kb.append([InlineKeyboardButton(text="🛒 В корзину", callback_data=f"cart_add_{pid}")])
     kb.append([InlineKeyboardButton(text="🔙 К товарам", callback_data=f"back_from_prod_{p['category_id']}")])
     await cb.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb), parse_mode="HTML")
-
-
-@router.callback_query(F.data.startswith("back_from_prod_"))
+    @router.callback_query(F.data.startswith("back_from_prod_"))
 async def back_from_prod(cb: CallbackQuery):
     cat_id = int(cb.data.split("_")[3])
     await show_products(cb)
@@ -334,7 +331,6 @@ async def view_cart(cb: CallbackQuery):
         ]))
         return
     total = get_cart_total(cb.from_user.id)
-    seller_id = items[0]['seller_id']
     text = "🛒 <b>Корзина:</b>\n\n"
     kb = []
     for i in items:
@@ -372,7 +368,6 @@ async def clear_cart_cb(cb: CallbackQuery):
     await view_cart(cb)
 
 
-# ========== ПРОДАВЕЦ ==========
 @router.callback_query(F.data == "seller_menu")
 async def seller_menu(cb: CallbackQuery):
     shops = get_all_shops()
@@ -537,4 +532,43 @@ async def product_name(msg: Message, state: FSMContext):
     await state.set_state(SellerStates.adding_product_price)
 
 
-@router.message(Seller
+@router.message(SellerStates.adding_product_price)
+async def product_price(msg: Message, state: FSMContext):
+    try:
+        price = int(msg.text.strip())
+    except ValueError:
+        await msg.answer("❌ Число!")
+        return
+    await state.update_data(prod_price=price)
+    await msg.answer("💎 Валюта (например: монета, рубль, алмаз):")
+    await state.set_state(SellerStates.adding_product_currency)
+
+
+@router.message(SellerStates.adding_product_currency)
+async def product_currency(msg: Message, state: FSMContext):
+    data = await state.get_data()
+    currency = msg.text.strip()
+    add_product(data['prod_cat'], msg.from_user.id, data['prod_name'], data['prod_price'], currency)
+    curr = plural(currency, data['prod_price'])
+    await state.clear()
+    await msg.answer(f"✅ «{data['prod_name']}» за {data['prod_price']} {curr} добавлен!")
+    await seller_inside(msg)
+
+
+@router.callback_query(F.data == "seller_inside_back")
+async def seller_inside_back(cb: CallbackQuery):
+    await cb.message.delete()
+    await seller_inside(cb.message)
+
+
+async def main():
+    logging.basicConfig(level=logging.INFO)
+    init_db()
+    bot = Bot(token=BOT_TOKEN)
+    dp = Dispatcher(storage=MemoryStorage())
+    dp.include_router(router)
+    await dp.start_polling(bot)
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
