@@ -7,6 +7,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import BotCommand
 
 BOT_TOKEN = "8948687493:AAH1pJQp1RclmWXNTnRvqEjjN3mQ46OmEtw"
 DB = "/tmp/market.db"
@@ -704,11 +705,14 @@ async def add_category_done(msg: Message, state: FSMContext):
 async def del_category_start(cb: CallbackQuery):
     cats = get_categories(cb.from_user.id)
     if not cats:
-        await cb.message.edit_text("Нет категорий.")
+        await cb.message.edit_text("Нет категорий.", reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 Назад", callback_data="seller_inside_back")]
+        ]))
         return
     kb = []
     for cat in cats:
         kb.append([InlineKeyboardButton(text=f"🗑 {cat['name']}", callback_data=f"delcat_{cat['id']}")])
+    kb.append([InlineKeyboardButton(text="🔙 Назад", callback_data="seller_inside_back")])
     await cb.message.edit_text("Выберите для удаления:", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
 
 
@@ -723,11 +727,14 @@ async def del_category(cb: CallbackQuery):
 async def add_product_start(cb: CallbackQuery, state: FSMContext):
     cats = get_categories(cb.from_user.id)
     if not cats:
-        await cb.message.edit_text("Сначала создайте категорию.")
+        await cb.message.edit_text("Сначала создайте категорию.", reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 Назад", callback_data="seller_inside_back")]
+        ]))
         return
     kb = []
     for cat in cats:
         kb.append([InlineKeyboardButton(text=cat['name'], callback_data=f"pickcat_{cat['id']}")])
+    kb.append([InlineKeyboardButton(text="🔙 Назад", callback_data="seller_inside_back")])
     await cb.message.edit_text("Выберите категорию:", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
 
 
@@ -735,11 +742,14 @@ async def add_product_start(cb: CallbackQuery, state: FSMContext):
 async def del_product_start(cb: CallbackQuery):
     cats = get_categories(cb.from_user.id)
     if not cats:
-        await cb.message.edit_text("Нет категорий.")
+        await cb.message.edit_text("Нет категорий.", reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 Назад", callback_data="seller_inside_back")]
+        ]))
         return
     kb = []
     for cat in cats:
         kb.append([InlineKeyboardButton(text=cat['name'], callback_data=f"pickdelcat_{cat['id']}")])
+    kb.append([InlineKeyboardButton(text="🔙 Назад", callback_data="seller_inside_back")])
     await cb.message.edit_text("Выберите категорию:", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
 
 
@@ -747,12 +757,15 @@ async def del_product_start(cb: CallbackQuery):
 async def pick_del_category(cb: CallbackQuery):
     prods = get_products(int(cb.data.split("_")[1]))
     if not prods:
-        await cb.message.edit_text("Нет товаров.")
+        await cb.message.edit_text("Нет товаров.", reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="🔙 Назад", callback_data="seller_inside_back")]
+        ]))
         return
     kb = []
     for p in prods:
         curr = plural(p['currency'], p['price'])
         kb.append([InlineKeyboardButton(text=f"🗑 {p['name']} — {p['price']} {curr}", callback_data=f"delprod_{p['id']}")])
+    kb.append([InlineKeyboardButton(text="🔙 Назад", callback_data="seller_inside_back")])
     await cb.message.edit_text("Выберите товар:", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
 
 
@@ -810,6 +823,7 @@ async def main():
     logging.basicConfig(level=logging.INFO)
     init_db()
     bot = Bot(token=BOT_TOKEN)
+    await bot.set_my_commands([BotCommand(command="start", description="Главное меню")])
     dp = Dispatcher(storage=MemoryStorage())
     dp.include_router(router)
     await dp.start_polling(bot)
