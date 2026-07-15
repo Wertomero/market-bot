@@ -278,7 +278,7 @@ async def product_detail(cb: CallbackQuery):
     await cb.message.edit_text(text, reply_markup=InlineKeyboardMarkup(inline_keyboard=kb), parse_mode="HTML")
     
 @router.callback_query(F.data.startswith("back_from_prod_"))
-                       async def back_from_prod(cb: CallbackQuery):
+async def back_from_prod(cb: CallbackQuery):
     cat_id = int(cb.data.split("_")[3])
     await show_products(cb)
 
