@@ -24,7 +24,7 @@ def init_db():
     c = conn.cursor()
     c.execute("CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY, username TEXT, shop_name TEXT, seller_game_id TEXT, shop_password TEXT)")
     c.execute("CREATE TABLE IF NOT EXISTS categories (id INTEGER PRIMARY KEY AUTOINCREMENT, seller_id INTEGER, name TEXT)")
-    c.execute("CREATE TABLE IF NOT EXISTS products (id INTEGER PRIMARY KEY AUTOINCREMENT, category_id INTEGER, seller_id INTEGER, name TEXT, price INTEGER, currency TEXT)")
+    c.execute("CREATE TABLE IF NOT EXISTS products (id INTEGER PRIMARY KEY AUTOINCREMENT, category_id INTEGER, seller_id INTEGER, name TEXT, price INTEGER, currency TEXT, stock INTEGER DEFAULT 1)")
     c.execute("CREATE TABLE IF NOT EXISTS cart (user_id INTEGER, product_id INTEGER, quantity INTEGER DEFAULT 1, PRIMARY KEY (user_id, product_id))")
     c.execute("CREATE TABLE IF NOT EXISTS orders (id INTEGER PRIMARY KEY AUTOINCREMENT, buyer_id INTEGER, seller_id INTEGER, status TEXT DEFAULT 'pending', total_amount INTEGER, buyer_game_id TEXT, seller_game_id TEXT, delivery_deadline TEXT)")
     c.execute("CREATE TABLE IF NOT EXISTS order_items (id INTEGER PRIMARY KEY AUTOINCREMENT, order_id INTEGER, product_name TEXT, quantity INTEGER, price INTEGER, currency TEXT)")
@@ -82,9 +82,9 @@ def get_categories(seller_id):
     return cats
 
 
-def add_product(cat_id, seller_id, name, price, currency):
+def add_product(cat_id, seller_id, name, price, currency, stock):
     conn = get_conn()
-    conn.execute("INSERT INTO products (category_id, seller_id, name, price, currency) VALUES (?,?,?,?,?)", (cat_id, seller_id, name, price, currency))
+    conn.execute("INSERT INTO products (category_id, seller_id, name, price, currency, stock) VALUES (?,?,?,?,?,?)", (cat_id, seller_id, name, price, currency, stock))
     conn.commit()
     conn.close()
 
@@ -105,16 +105,20 @@ def get_product(prod_id):
 
 def get_products(cat_id):
     conn = get_conn()
-    prods = [dict(r) for r in conn.execute("SELECT * FROM products WHERE category_id=?", (cat_id,)).fetchall()]
+    prods = [dict(r) for r in conn.execute("SELECT * FROM products WHERE category_id=? AND stock > 0", (cat_id,)).fetchall()]
     conn.close()
     return prods
 
 
 def add_to_cart(uid, pid, qty=1):
     conn = get_conn()
+    p = get_product(pid)
+    if not p or p['stock'] < qty:
+        return False
     conn.execute("INSERT INTO cart (user_id, product_id, quantity) VALUES (?,?,?) ON CONFLICT(user_id, product_id) DO UPDATE SET quantity = quantity + ?", (uid, pid, qty, qty))
     conn.commit()
     conn.close()
+    return True
 
 
 def remove_from_cart(uid, pid):
@@ -134,7 +138,7 @@ def update_cart(uid, pid, delta):
 
 def get_cart(uid):
     conn = get_conn()
-    items = [dict(r) for r in conn.execute("SELECT p.id, p.name, p.price, p.currency, p.seller_id, c.quantity FROM cart c JOIN products p ON c.product_id = p.id WHERE c.user_id = ?", (uid,)).fetchall()]
+    items = [dict(r) for r in conn.execute("SELECT p.id, p.name, p.price, p.currency, p.seller_id, p.stock, c.quantity FROM cart c JOIN products p ON c.product_id = p.id WHERE c.user_id = ?", (uid,)).fetchall()]
     conn.close()
     return items
 
@@ -165,6 +169,7 @@ def create_order(buyer_id, seller_id, total, buyer_gid, items):
     oid = c.lastrowid
     for item in items:
         conn.execute("INSERT INTO order_items (order_id, product_name, quantity, price, currency) VALUES (?,?,?,?,?)", (oid, item['name'], item['quantity'], item['price'], item['currency']))
+        conn.execute("UPDATE products SET stock = stock - ? WHERE id = ?", (item['quantity'], item['id']))
     conn.commit()
     conn.close()
     return oid
@@ -209,8 +214,12 @@ def update_order_status(oid, status, deadline=None):
 
 def cancel_order(oid):
     conn = get_conn()
-    conn.execute("UPDATE orders SET status='cancelled' WHERE id=?", (oid,))
-    conn.commit()
+    order = get_order(oid)
+    if order:
+        for item in order['items']:
+            conn.execute("UPDATE products SET stock = stock + ? WHERE id = (SELECT id FROM products WHERE name = ? AND seller_id = ? LIMIT 1)", (item['quantity'], item['product_name'], order['seller_id']))
+        conn.execute("UPDATE orders SET status='cancelled' WHERE id=?", (oid,))
+        conn.commit()
     conn.close()
 
 
@@ -247,6 +256,7 @@ class SellerStates(StatesGroup):
     adding_product_name = State()
     adding_product_price = State()
     adding_product_currency = State()
+    adding_product_stock = State()
 
 
 class OrderStates(StatesGroup):
@@ -321,7 +331,7 @@ async def show_products(cb: CallbackQuery):
     kb = []
     for p in prods:
         curr = plural(p['currency'], p['price'])
-        kb.append([InlineKeyboardButton(text=f"{p['name']} — {p['price']} {curr}", callback_data=f"prod_{p['id']}")])
+        kb.append([InlineKeyboardButton(text=f"{p['name']} — {p['price']} {curr} ({p['stock']} шт)", callback_data=f"prod_{p['id']}")])
     kb.append([InlineKeyboardButton(text="🔙 К категориям", callback_data=f"back_to_shop_{cat_id}")])
     await cb.message.edit_text("📦 Товары:", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
 
@@ -350,7 +360,7 @@ async def product_detail(cb: CallbackQuery):
         return
     qty = get_cart_item_qty(cb.from_user.id, pid)
     curr = plural(p['currency'], p['price'])
-    text = f"<b>{p['name']}</b>\n💰 Цена: {p['price']} {curr}"
+    text = f"<b>{p['name']}</b>\n💰 Цена: {p['price']} {curr}\n📦 В наличии: {p['stock']} шт"
     kb = []
     if qty > 0:
         kb.append([
@@ -372,7 +382,7 @@ async def back_from_prod(cb: CallbackQuery):
     kb = []
     for p in prods:
         curr = plural(p['currency'], p['price'])
-        kb.append([InlineKeyboardButton(text=f"{p['name']} — {p['price']} {curr}", callback_data=f"prod_{p['id']}")])
+        kb.append([InlineKeyboardButton(text=f"{p['name']} — {p['price']} {curr} ({p['stock']} шт)", callback_data=f"prod_{p['id']}")])
     kb.append([InlineKeyboardButton(text="🔙 К категориям", callback_data=f"back_to_shop_{cat_id}")])
     await cb.message.edit_text("📦 Товары:", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
 
@@ -388,6 +398,9 @@ async def cart_add(cb: CallbackQuery):
     if cart and cart[0]['seller_id'] != p['seller_id']:
         await cb.answer("❌ Очистите корзину!")
         return
+    if p['stock'] < 1:
+        await cb.answer("❌ Нет в наличии!")
+        return
     add_to_cart(cb.from_user.id, pid)
     await cb.answer("✅ Добавлено!")
     await product_detail(cb)
@@ -396,6 +409,11 @@ async def cart_add(cb: CallbackQuery):
 @router.callback_query(F.data.startswith("cart_inc_"))
 async def cart_inc(cb: CallbackQuery):
     pid = int(cb.data.split("_")[2])
+    p = get_product(pid)
+    qty = get_cart_item_qty(cb.from_user.id, pid)
+    if p['stock'] <= qty:
+        await cb.answer("❌ Больше нет в наличии!")
+        return
     update_cart(cb.from_user.id, pid, 1)
     await cb.answer("+1")
     await product_detail(cb)
@@ -446,6 +464,11 @@ async def view_cart(cb: CallbackQuery):
 @router.callback_query(F.data.startswith("ccart_inc_"))
 async def cart_inc_from_cart(cb: CallbackQuery):
     pid = int(cb.data.split("_")[2])
+    p = get_product(pid)
+    qty = get_cart_item_qty(cb.from_user.id, pid)
+    if p['stock'] <= qty:
+        await cb.answer("❌ Больше нет в наличии!")
+        return
     update_cart(cb.from_user.id, pid, 1)
     await view_cart(cb)
 
@@ -502,7 +525,7 @@ async def process_order(msg: Message, state: FSMContext, bot: Bot):
     for i in order['items']:
         curr = plural(i['currency'], i['price'] * i['quantity'])
         stext += f"• {i['product_name']} x{i['quantity']} = {i['price']*i['quantity']} {curr}\n"
-    stext += f"\n💰 Итого: <b>{total}</b>"
+        stext += f"\n💰 Итого: <b>{total}</b>"
     await bot.send_message(seller_id, stext, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="✅ Принять", callback_data=f"acc_{oid}")],
         [InlineKeyboardButton(text="❌ Отклонить", callback_data=f"rej_{oid}")],
@@ -764,7 +787,7 @@ async def pick_del_category(cb: CallbackQuery):
     kb = []
     for p in prods:
         curr = plural(p['currency'], p['price'])
-        kb.append([InlineKeyboardButton(text=f"🗑 {p['name']} — {p['price']} {curr}", callback_data=f"delprod_{p['id']}")])
+        kb.append([InlineKeyboardButton(text=f"🗑 {p['name']} — {p['price']} {curr} ({p['stock']} шт)", callback_data=f"delprod_{p['id']}")])
     kb.append([InlineKeyboardButton(text="🔙 Назад", callback_data="seller_inside_back")])
     await cb.message.edit_text("Выберите товар:", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
 
@@ -804,12 +827,23 @@ async def product_price(msg: Message, state: FSMContext):
 
 @router.message(SellerStates.adding_product_currency)
 async def product_currency(msg: Message, state: FSMContext):
+    await state.update_data(prod_currency=msg.text.strip())
+    await msg.answer("📦 Количество на складе (число):")
+    await state.set_state(SellerStates.adding_product_stock)
+
+
+@router.message(SellerStates.adding_product_stock)
+async def product_stock(msg: Message, state: FSMContext):
+    try:
+        stock = int(msg.text.strip())
+    except ValueError:
+        await msg.answer("❌ Число!")
+        return
     data = await state.get_data()
-    currency = msg.text.strip()
-    add_product(data['prod_cat'], msg.from_user.id, data['prod_name'], data['prod_price'], currency)
-    curr = plural(currency, data['prod_price'])
+    add_product(data['prod_cat'], msg.from_user.id, data['prod_name'], data['prod_price'], data['prod_currency'], stock)
+    curr = plural(data['prod_currency'], data['prod_price'])
     await state.clear()
-    await msg.answer(f"✅ «{data['prod_name']}» за {data['prod_price']} {curr} добавлен!")
+    await msg.answer(f"✅ «{data['prod_name']}» за {data['prod_price']} {curr} ({stock} шт) добавлен!")
     await seller_inside(msg)
 
 
