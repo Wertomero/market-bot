@@ -977,7 +977,7 @@ async def main():
     bot = Bot(token=BOT_TOKEN)
     await bot.set_my_commands([BotCommand(command="start", description="Главное меню")])
     dp = Dispatcher(storage=MemoryStorage())
-        dp.include_router(router)
+    dp.include_router(router)
     await dp.start_polling(bot)
 
 
