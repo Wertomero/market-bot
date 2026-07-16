@@ -514,7 +514,7 @@ async def clear_cart_cb(cb: CallbackQuery):
 
 @router.callback_query(F.data == "checkout")
 async def checkout(cb: CallbackQuery, state: FSMContext):
-        items = get_cart(cb.from_user.id)
+    items = get_cart(cb.from_user.id)
     if not items:
         await cb.answer("Корзина пуста!")
         return
