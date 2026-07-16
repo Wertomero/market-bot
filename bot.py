@@ -1011,7 +1011,7 @@ async def del_product(cb: CallbackQuery):
     await seller_inside_back(cb)
 
 
-@router.callback_query(F.data.startswith("pickcat_")
+@router.callback_query(F.data.startswith("pickcat_"))
 async def pick_category(cb: CallbackQuery, state: FSMContext):
     await state.update_data(prod_cat=int(cb.data.split("_")[1]))
     await cb.message.edit_text("📝 Название товара:")
