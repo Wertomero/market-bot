@@ -1,2 +1,3 @@
-aiogram==3.17.0
-python-dotenv==1.1.0
+aiogram
+psycopg2-binary
+python-dotenv
