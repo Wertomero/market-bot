@@ -913,7 +913,7 @@ async def edit_shop_name_done(msg: Message, state: FSMContext):
 async def seller_orders(cb: CallbackQuery):
     orders = get_pending_orders(cb.from_user.id)
     if not orders:
-    await cb.message.edit_text("📭 Нет активных заказов.", reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+        await cb.message.edit_text("📭 Нет активных заказов.", reply_markup=InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="🔙 Назад", callback_data="seller_inside_back")]]))
         return
     text = "📥 <b>Активные заказы:</b>\n\n"
