@@ -551,7 +551,7 @@ async def buy_qty_done(msg: Message, state: FSMContext):
         return
     if qty <= 0:
         await msg.answer("❌ Больше нуля!")
-             return
+        return
     if qty > p['stock']:
         await msg.answer(f"❌ В наличии только {p['stock']} шт!")
         return
