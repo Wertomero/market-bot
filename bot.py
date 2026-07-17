@@ -977,7 +977,7 @@ async def add_category_start(cb: CallbackQuery, state: FSMContext):
 @router.message(SellerStates.adding_category)
 async def add_category_done(msg: Message, state: FSMContext):
     add_category(msg.from_user.id, msg.text.strip())
-      await state.clear()
+    await state.clear()
     await msg.answer(f"✅ «{msg.text.strip()}» создана!")
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="➕ Создать категорию", callback_data="add_category")],
