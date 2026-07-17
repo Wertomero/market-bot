@@ -979,7 +979,7 @@ async def ready_order(cb: CallbackQuery, bot: Bot):
         f"🎉 Заказ №{oid} отмечен как готовый.\nПокупатель уведомлён.",
         parse_mode="HTML")
     await cb.answer("🎉 Покупатель уведомлён!")
-      await seller_orders(cb)
+    await seller_orders(cb)
 
 
 @router.callback_query(F.data.startswith("rej_"))
