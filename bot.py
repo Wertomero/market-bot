@@ -974,7 +974,7 @@ async def create_shop(cb: CallbackQuery, state: FSMContext):
 
 
 @router.message(ShopSetup.waiting_for_shop_name)
-async def shop_name(msg: Message, state: FSMContext)   
+async def shop_name(msg: Message, state: FSMContext):  
     await state.update_data(shop_name=msg.text.strip())
     await msg.answer("📧 Введите игровую почту:")
     await state.set_state(ShopSetup.waiting_for_email)
