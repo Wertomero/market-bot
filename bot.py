@@ -549,7 +549,7 @@ async def top_shops(cb: CallbackQuery):
 async def my_stats(cb: CallbackQuery):
     buyer = get_buyer_stats(cb.from_user.id)
     text = f"📊 <b>Моя статистика</b>\n\n🛒 <b>Как покупатель:</b>\n• Куплено: <b>{buyer['total_bought']}</b>\n• Потрачено: <b>{buyer['total_spent']}</b>\n• Активных: <b>{buyer['pending']}</b>\n"
-      shop = get_shop(cb.from_user.id)
+    shop = get_shop(cb.from_user.id)
     if shop:
         seller = get_seller_stats(cb.from_user.id)
         text += f"\n🏪 <b>Как продавец ({shop['shop_name']}):</b>\n• Выполнено: <b>{seller['total_orders']}</b>\n• Заработано: <b>{seller['total_earned']}</b>\n• Активных: <b>{seller['pending']}</b>"
