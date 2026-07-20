@@ -560,6 +560,7 @@ async def my_stats(cb: CallbackQuery):
     ]))
 
 
+
 # ========== ПОКУПАТЕЛЬ ==========
 @router.callback_query(F.data == "buyer")
 async def buyer(cb: CallbackQuery):
