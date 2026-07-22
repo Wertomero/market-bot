@@ -1,6 +1,6 @@
 import asyncio
 import logging
-import psycopg2
+from aiohttp import web
 from psycopg2.extras import RealDictCursor
 from datetime import datetime, timedelta
 from aiogram import Bot, Dispatcher, Router, F
