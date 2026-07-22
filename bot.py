@@ -1503,8 +1503,10 @@ async def seller_inside_back(cb: CallbackQuery):
 
 
 async def main():
+    print("Бот запускается...")
     logging.basicConfig(level=logging.INFO)
     init_db()
+    print("База данных инициализирована")
     bot = Bot(token=BOT_TOKEN)
     await bot.set_my_commands([
         BotCommand(command="start", description="Главное меню"),
@@ -1512,6 +1514,7 @@ async def main():
     ])
     dp = Dispatcher(storage=MemoryStorage())
     dp.include_router(router)
+    print("Бот начинает поллинг...")
     await dp.start_polling(bot)
 
 
