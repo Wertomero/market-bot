@@ -1502,21 +1502,42 @@ async def seller_inside_back(cb: CallbackQuery):
     await seller_inside_msg(cb.message, cb.from_user.id)
 
 
+from aiohttp import web
+
+async def handle(request):
+    return web.Response(text="Bot is running")
+
 async def main():
     print("Бот запускается...")
     logging.basicConfig(level=logging.INFO)
-    init_db()
-    print("База данных инициализирована")
     bot = Bot(token=BOT_TOKEN)
-    await bot.set_my_commands([
-        BotCommand(command="start", description="Главное меню"),
-        BotCommand(command="help", description="Помощь"),
-    ])
+    
+    try:
+        me = await bot.get_me()
+        print(f"Бот подключен: @{me.username}")
+    except Exception as e:
+        print(f"Ошибка токена: {e}")
+        return
+    
+    init_db()
+    print("База ОК")
+    
     dp = Dispatcher(storage=MemoryStorage())
     dp.include_router(router)
-    print("Бот начинает поллинг...")
+    
+    # HTTP сервер для Railway
+    app = web.Application()
+    app.router.add_get("/", handle)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", 8000)
+    await site.start()
+    print("HTTP сервер на порту 8000")
+    
+    print("Поллинг...")
     await dp.start_polling(bot)
 
 
 if __name__ == "__main__":
+    print("Старт main")
     asyncio.run(main())
