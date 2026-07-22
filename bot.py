@@ -972,7 +972,7 @@ async def seller_menu(cb: CallbackQuery):
     if not shop:
         kb.append([InlineKeyboardButton(text="➕ Создать магазин", callback_data="create_shop")])
     kb.append([InlineKeyboardButton(text="🔙 Назад", callback_data="start_menu")])
-        await cb.message.edit_text("🏪 Магазины:", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
+    await cb.message.edit_text("🏪 Магазины:", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
 
 
 @router.callback_query(F.data == "create_shop")
