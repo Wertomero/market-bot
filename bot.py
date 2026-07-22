@@ -17,7 +17,7 @@ SUPPORT_USERNAME = "@Ilya11093"
 
 
 def get_conn():
-    conn = psycopg2.connect(DB_URL)
+    conn = psycopg2.connect(DB_URL, connect_timeout=10)
     conn.autocommit = True
     return conn
 
