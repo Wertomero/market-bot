@@ -11,7 +11,8 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.types import BotCommand
 
-BOT_TOKEN = "8948687493:AAF18lF0T_39bs-y6_EvYP6u4RosJaubyPA"
+import os
+BOT_TOKEN = os.getenv("BOT_TOKEN")
 DB_URL = "postgresql://neondb_owner:npg_rj7OmnWK3eYG@ep-fancy-queen-avsx9sia.c-11.us-east-1.aws.neon.tech/neondb?sslmode=require"
 SUPPORT_USERNAME = "@Ilya11093"
 
