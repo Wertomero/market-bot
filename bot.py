@@ -13,7 +13,7 @@ from aiogram.types import BotCommand
 
 import os
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-DB_URL = "postgresql://neondb_owner:npg_rj7OmnWK3eYG@ep-fancy-queen-avsx9sia.c-11.us-east-1.aws.neon.tech/neondb?sslmode=require"
+DB_URL = os.getenv("DB_URL")
 SUPPORT_USERNAME = "@Ilya11093"
 
 
