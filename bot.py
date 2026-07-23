@@ -237,8 +237,9 @@ def add_discount(product_id, percent, hours):
     conn = get_conn()
     c = conn.cursor()
     end_time = datetime.now() + timedelta(hours=hours)
-    c.execute("INSERT INTO discounts (product_id, percent, end_time) VALUES (%s,%s,%s) ON CONFLICT (product_id) DO UPDATE SET percent=%s, end_time=%s",
-              (product_id, percent, end_time, percent, end_time))
+    c.execute("DELETE FROM discounts WHERE product_id=%s", (product_id,))
+    c.execute("INSERT INTO discounts (product_id, percent, end_time) VALUES (%s,%s,%s)",
+              (product_id, percent, end_time))
     conn.close()
 
 
