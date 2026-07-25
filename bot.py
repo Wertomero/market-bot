@@ -395,7 +395,7 @@ def cancel_order(oid):
     if order:
         c = conn.cursor()
         for item in order['items']:
-            c.execute("UPDATE products SET stock = stock + %s WHERE name = %s AND seller_id = %s", (item['quantity'], item['product_name'], order['seller_id']))
+            c.execute("UPDATE products SET stock = stock + %s WHERE id = (SELECT id FROM products WHERE name = %s AND seller_id = %s LIMIT 1)", (item['quantity'], item['product_name'], order['seller_id']))
         c.execute("UPDATE orders SET status='cancelled' WHERE id=%s", (oid,))
         conn.close()
 
