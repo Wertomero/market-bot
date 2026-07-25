@@ -902,10 +902,10 @@ else:
         disc_price, _, _ = get_discounted_price(i['id'])
 price = disc_price if disc_price else i['price']
 curr = plural(i['currency'], price * i['quantity'])
-        if i['pack_qty'] > 1:
-            stext += f"• {i['product_name']} (x{i['pack_qty']}) x{i['quantity']} уп. = {i['price']*i['quantity']} {curr} ({total_qty} шт)\n"
-        else:
-            stext += f"• {i['product_name']} x{i['quantity']} = {i['price']*i['quantity']} {curr}\n"
+if i['pack_qty'] > 1:
+    stext += f"• {i['product_name']} (x{i['pack_qty']}) x{i['quantity']} уп. = {i['price']*i['quantity']} {curr} ({total_qty} шт)\n"
+else:
+    stext += f"• {i['product_name']} x{i['quantity']} = {i['price']*i['quantity']} {curr}\n"
     stext += f"\n💰 Итого: <b>{total}</b>"
     try:
         await bot.send_message(seller_id, stext, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=[
