@@ -888,7 +888,7 @@ async def process_order(msg: Message, state: FSMContext, bot: Bot):
         disc_price, _, _ = get_discounted_price(i['id'])
 price = disc_price if disc_price else i['price']
 curr = plural(i['currency'], price * i['quantity'])
-        if i['pack_qty'] > 1:
+    if i['pack_qty'] > 1:
             text += f"• {i['product_name']} (x{i['pack_qty']}) x{i['quantity']} уп. = {i['price']*i['quantity']} {curr} ({total_qty} шт)\n"
         else:
             text += f"• {i['product_name']} x{i['quantity']} = {i['price']*i['quantity']} {curr}\n"
