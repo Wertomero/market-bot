@@ -883,38 +883,37 @@ async def process_order(msg: Message, state: FSMContext, bot: Bot):
     order = get_order(oid)
     clear_cart(uid)
     text = f"✅ <b>Заказ №{oid} создан!</b>\n\n📦 Товары:\n"
-    for i in order['items']:
-        total_qty = i['quantity'] * i['pack_qty']
-        disc_price, _, _ = get_discounted_price(i['id'])
-price = disc_price if disc_price else i['price']
-curr = plural(i['currency'], price * i['quantity'])
-if i['pack_qty'] > 1:
-    text += f"• {i['product_name']} (x{i['pack_qty']}) x{i['quantity']} уп. = {price*i['quantity']} {curr} ({total_qty} шт)\n"
-else:
-    text += f"• {i['product_name']} x{i['quantity']} = {price*i['quantity']} {curr}\n"
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="❌ Отменить заказ", callback_data=f"cancel_{oid}")]])
-    await msg.answer(text, reply_markup=kb, parse_mode="HTML")
-    await state.clear()
-    stext = f"🔔 <b>Новый заказ №{oid}!</b>\n👤 @{msg.from_user.username or '—'}\n📧 Почта: <b>{email}</b>\n\n📦 Товары:\n"
-    for i in order['items']:
-        total_qty = i['quantity'] * i['pack_qty']
-        disc_price, _, _ = get_discounted_price(i['id'])
-price = disc_price if disc_price else i['price']
-curr = plural(i['currency'], price * i['quantity'])
-if i['pack_qty'] > 1:
-    stext += f"• {i['product_name']} (x{i['pack_qty']}) x{i['quantity']} уп. = {i['price']*i['quantity']} {curr} ({total_qty} шт)\n"
-else:
-    stext += f"• {i['product_name']} x{i['quantity']} = {i['price']*i['quantity']} {curr}\n"
-    stext += f"\n💰 Итого: <b>{total}</b>"
-    try:
-        await bot.send_message(seller_id, stext, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="✅ Принять", callback_data=f"acc_{oid}")],
-            [InlineKeyboardButton(text="❌ Отклонить", callback_data=f"rej_{oid}")]]))
-    except:
-        pass
-
-
+for i in order['items']:
+    total_qty = i['quantity'] * i['pack_qty']
+    disc_price, _, _ = get_discounted_price(i['id'])
+    price = disc_price if disc_price else i['price']
+    curr = plural(i['currency'], price * i['quantity'])
+    if i['pack_qty'] > 1:
+        text += f"• {i['product_name']} (x{i['pack_qty']}) x{i['quantity']} уп. = {price*i['quantity']} {curr} ({total_qty} шт)\n"
+    else:
+        text += f"• {i['product_name']} x{i['quantity']} = {price*i['quantity']} {curr}\n"
+text += f"\n💰 Сумма: <b>{total}</b>\n📧 Ваша почта: <b>{email}</b>\n\n⏳ Ожидайте продавца."
+kb = InlineKeyboardMarkup(inline_keyboard=[
+    [InlineKeyboardButton(text="❌ Отменить заказ", callback_data=f"cancel_{oid}")]])
+await msg.answer(text, reply_markup=kb, parse_mode="HTML")
+await state.clear()
+stext = f"🔔 <b>Новый заказ №{oid}!</b>\n👤 @{msg.from_user.username or '—'}\n📧 Почта: <b>{email}</b>\n\n📦 Товары:\n"
+for i in order['items']:
+    total_qty = i['quantity'] * i['pack_qty']
+    disc_price, _, _ = get_discounted_price(i['id'])
+    price = disc_price if disc_price else i['price']
+    curr = plural(i['currency'], price * i['quantity'])
+    if i['pack_qty'] > 1:
+        stext += f"• {i['product_name']} (x{i['pack_qty']}) x{i['quantity']} уп. = {price*i['quantity']} {curr} ({total_qty} шт)\n"
+    else:
+        stext += f"• {i['product_name']} x{i['quantity']} = {price*i['quantity']} {curr}\n"
+stext += f"\n💰 Итого: <b>{total}</b>"
+try:
+    await bot.send_message(seller_id, stext, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Принять", callback_data=f"acc_{oid}")],
+        [InlineKeyboardButton(text="❌ Отклонить", callback_data=f"rej_{oid}")]]))
+except:
+    pass
 @router.callback_query(F.data.startswith("cancel_"))
 async def cancel_order_cb(cb: CallbackQuery, bot: Bot):
     oid = int(cb.data.split("_")[1])
