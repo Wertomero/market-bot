@@ -1175,6 +1175,9 @@ async def ready_order(cb: CallbackQuery, bot: Bot):
     if order['seller_id'] != cb.from_user.id:
         await cb.answer("❌ Не ваш заказ!")
         return
+    if order['status'] != 'accepted':
+        await cb.answer("❌ Заказ уже не активен!")
+        return   
     semail = get_seller_email(cb.from_user.id)
     update_order_status(oid, 'ready')
     text = f"🎉 <b>Заказ №{oid} готов!</b>\n\n📦 Товары:\n"
