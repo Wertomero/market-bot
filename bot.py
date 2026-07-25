@@ -923,9 +923,15 @@ async def cancel_order_cb(cb: CallbackQuery, bot: Bot):
         await cb.answer("❌ Нельзя отменить!")
         return
     cancel_order(oid)
+    try:
+        await bot.edit_message_reply_markup(
+            chat_id=order['seller_id'],
+            message_id=...  # не можем узнать, поэтому просто шлём новое
+        )
+    except:
+        pass
     await bot.send_message(order['seller_id'], f"❌ Заказ №{oid} отменён покупателем.")
     await cb.message.edit_text(f"❌ Заказ №{oid} отменён.")
-
 
 @router.callback_query(F.data == "my_orders")
 async def buyer_orders(cb: CallbackQuery):
@@ -1191,11 +1197,12 @@ async def reject_order(cb: CallbackQuery, bot: Bot):
     if order['seller_id'] != cb.from_user.id:
         await cb.answer("❌ Не ваш заказ!")
         return
+    if order['status'] != 'pending':
+        await cb.answer("❌ Заказ уже не активен!")
+        return
     update_order_status(oid, 'rejected')
-    await bot.send_message(order['buyer_id'], f"❌ <b>Заказ №{oid} отклонён.</b>", parse_mode="HTML")
-    await bot.send_message(order['seller_id'], f"❌ Вы отклонили заказ №{oid}.", parse_mode="HTML")
-    await cb.answer("❌ Заказ отклонён!")
-    await seller_orders(cb)
+    await bot.send_message(order['buyer_id'], f"❌ <b>Заказ №{oid} отклонён продавцом.</b>", parse_mode="HTML")
+    await cb.message.edit_text(f"❌ Заказ №{oid} отклонён.")
 
 
 @router.callback_query(F.data == "add_category")
