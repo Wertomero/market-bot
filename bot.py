@@ -331,8 +331,12 @@ def clear_cart(uid):
 
 def get_cart_total(uid):
     items = get_cart(uid)
-    return sum(i['price'] * i['quantity'] for i in items)
-
+    total = 0
+    for i in items:
+        disc_price, _, _ = get_discounted_price(i['id'])
+        price = disc_price if disc_price else i['price']
+        total += price * i['quantity']
+    return total
 
 def create_order(buyer_id, seller_id, total, buyer_email, items):
     conn = get_conn()
