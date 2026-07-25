@@ -891,7 +891,7 @@ for i in order['items']:
     if i['pack_qty'] > 1:
         text += f"• {i['product_name']} (x{i['pack_qty']}) x{i['quantity']} уп. = {price*i['quantity']} {curr} ({total_qty} шт)\n"
     else:
-    text += f"• {i['product_name']} x{i['quantity']} = {price*i['quantity']} {curr}\n"
+        text += f"• {i['product_name']} x{i['quantity']} = {price*i['quantity']} {curr}\n"
 text += f"\n💰 Сумма: <b>{total}</b>\n📧 Ваша почта: <b>{email}</b>\n\n⏳ Ожидайте продавца."
 kb = InlineKeyboardMarkup(inline_keyboard=[
     [InlineKeyboardButton(text="❌ Отменить заказ", callback_data=f"cancel_{oid}")]])
