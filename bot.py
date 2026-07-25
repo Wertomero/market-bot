@@ -885,7 +885,9 @@ async def process_order(msg: Message, state: FSMContext, bot: Bot):
     text = f"✅ <b>Заказ №{oid} создан!</b>\n\n📦 Товары:\n"
     for i in order['items']:
         total_qty = i['quantity'] * i['pack_qty']
-        curr = plural(i['currency'], i['price'] * i['quantity'])
+        disc_price, _, _ = get_discounted_price(i['id'])
+price = disc_price if disc_price else i['price']
+curr = plural(i['currency'], price * i['quantity'])
         if i['pack_qty'] > 1:
             text += f"• {i['product_name']} (x{i['pack_qty']}) x{i['quantity']} уп. = {i['price']*i['quantity']} {curr} ({total_qty} шт)\n"
         else:
@@ -898,7 +900,9 @@ async def process_order(msg: Message, state: FSMContext, bot: Bot):
     stext = f"🔔 <b>Новый заказ №{oid}!</b>\n👤 @{msg.from_user.username or '—'}\n📧 Почта: <b>{email}</b>\n\n📦 Товары:\n"
     for i in order['items']:
         total_qty = i['quantity'] * i['pack_qty']
-        curr = plural(i['currency'], i['price'] * i['quantity'])
+        disc_price, _, _ = get_discounted_price(i['id'])
+price = disc_price if disc_price else i['price']
+curr = plural(i['currency'], price * i['quantity'])
         if i['pack_qty'] > 1:
             stext += f"• {i['product_name']} (x{i['pack_qty']}) x{i['quantity']} уп. = {i['price']*i['quantity']} {curr} ({total_qty} шт)\n"
         else:
