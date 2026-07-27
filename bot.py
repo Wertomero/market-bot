@@ -630,7 +630,7 @@ async def task_deadline(msg: Message, state: FSMContext):
 
 
 @router.callback_query(F.data.startswith("respond_task_"))
-async def respond_task_start(cb: CallbackQuery, state: FSMContext):
+async def respond_task_start(cb: CallbackQuery, state: FSMContext, bot: Bot):
     tid = int(cb.data.split("_")[2])
     t = get_task(tid)
     if not t:
@@ -640,6 +640,12 @@ async def respond_task_start(cb: CallbackQuery, state: FSMContext):
         add_task_response(tid, cb.from_user.id, t['price'], t['currency'])
         await cb.answer("✅ Отклик отправлен!")
         await cb.message.edit_text("✅ Вы откликнулись на задание!")
+        try:
+            await bot.send_message(t['seller_id'], 
+                f"🔔 <b>Новый отклик на задание #{tid}!</b>\n👤 @{cb.from_user.username or '—'}\n💰 {t['price']} {t['currency']}\n\nПроверьте отклики в меню задания.",
+                parse_mode="HTML")
+        except:
+            pass
         return
     await state.update_data(respond_tid=tid)
     await cb.message.edit_text("💰 Предложите вашу цену:")
