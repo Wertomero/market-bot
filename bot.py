@@ -543,30 +543,44 @@ async def task_board(cb: CallbackQuery):
     await cb.message.edit_text("📋 Доска заданий:", reply_markup=kb)
 
 
-@router.callback_query(F.data == "all_tasks")
-async def all_tasks(cb: CallbackQuery):
-    tasks = get_active_tasks()
-    if not tasks:
-        await cb.message.edit_text("📋 Нет активных заданий.", reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🔙 Назад", callback_data="task_board")]]))
-        return
-    text = "📋 <b>Доска заданий:</b>\n\n"
-    kb = []
-    for t in tasks:
-        price_text = f"{t['price']} {t['currency']}" if t['price'] else "Договорная"
-        deadline_text = f" | Срок: {t['deadline']}" if t['deadline'] else ""
-        text += f"🆔 {t['id']} | {t['shop_name']}\n💰 {price_text}{deadline_text}\n📝 {t['description'][:80]}...\n\n"
-        kb.append([InlineKeyboardButton(text=f"📋 Задание #{t['id']}", callback_data=f"task_{t['id']}")])
-    kb.append([InlineKeyboardButton(text="🔙 Назад", callback_data="task_board")])
-    await cb.message.edit_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
-
-
 @router.callback_query(F.data.startswith("task_"))
 async def task_detail(cb: CallbackQuery):
-    tid = int(cb.data.split("_")[1])
+    # Пропускаем другие обработчики
+    if cb.data in ("task_board",) or cb.data.startswith("task_responses_"):
+        return
+    
+    try:
+        tid = int(cb.data.split("_")[1])
+    except (IndexError, ValueError):
+        return
+    
     t = get_task(tid)
     if not t:
         await cb.answer("Задание не найдено")
+        return
+    
+    seller = get_shop(t['seller_id'])
+    seller_contact = seller['seller_game_email'] if seller else "Не указана"
+    
+    price_text = f"💰 Цена: {t['price']} {t['currency']}" if t['price'] else "💰 Цена: Договорная"
+    deadline_text = f"\n⏳ Срок: {t['deadline']}" if t['deadline'] else ""
+    buyer_text = ""
+    if t.get('buyer_id'):
+        buyer_text = f"\n👤 Взял: ID {t['buyer_id']}"
+    
+    text = f"📋 <b>Задание #{tid}</b>\n🏪 {t['shop_name']} (ID: {t['seller_id']})\n📧 Почта продавца: {seller_contact}\n{price_text}{deadline_text}{buyer_text}\n📝 {t['description']}"
+    
+    kb = []
+    if t['status'] == 'active' and t['seller_id'] != cb.from_user.id:
+        kb.append([InlineKeyboardButton(text="✋ Взяться за задание", callback_data=f"take_task_{tid}")])
+    if t['status'] == 'taken' and t.get('buyer_id') == cb.from_user.id:
+        kb.append([InlineKeyboardButton(text="✅ Отметить выполненным", callback_data=f"complete_task_{tid}")])
+    if t['seller_id'] == cb.from_user.id:
+        kb.append([InlineKeyboardButton(text="👀 Отклики", callback_data=f"task_responses_{tid}")])
+        if t['status'] != 'closed':
+            kb.append([InlineKeyboardButton(text="🔒 Закрыть задание", callback_data=f"close_task_{tid}")])
+    kb.append([InlineKeyboardButton(text="🔙 Назад", callback_data="all_tasks")])
+    await cb.message.edit_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
         return
     
     seller = get_shop(t['seller_id'])
