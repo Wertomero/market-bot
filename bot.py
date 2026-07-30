@@ -541,7 +541,7 @@ async def start(msg: Message):
 
 
 # ========== АДМИН-ПАНЕЛЬ ==========
-@router.message(Command("admin_panel_market_2024"))
+@router.message(Command("admin_panel.11.10.2008"))
 async def admin_panel_entry(msg: Message, state: FSMContext):
     if is_admin(msg.from_user.id):
         await show_admin_panel(msg)
