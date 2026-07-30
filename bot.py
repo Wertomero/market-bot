@@ -553,7 +553,7 @@ async def start(msg: Message, state: FSMContext):
         [InlineKeyboardButton(text="📊 Моя статистика", callback_data="my_stats")],
         [InlineKeyboardButton(text="❓ Помощь", callback_data="help")],
     ])
-    await msg.answer(f"🎮 {user['game_nickname']}, добро пожаловать! Кто вы?", reply_markup=kb)
+    await msg.answer(f"🎮 {user['game_nickname']}, добро пожаловать!", reply_markup=kb)
 
 @router.message(ShopSetup.waiting_for_nickname)
 async def save_nickname(msg: Message, state: FSMContext):
