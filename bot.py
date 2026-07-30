@@ -581,7 +581,6 @@ async def task_detail(cb: CallbackQuery):
             kb.append([InlineKeyboardButton(text="🔒 Закрыть задание", callback_data=f"close_task_{tid}")])
     kb.append([InlineKeyboardButton(text="🔙 Назад", callback_data="all_tasks")])
     await cb.message.edit_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
-        return
     
     seller = get_shop(t['seller_id'])
     seller_contact = seller['seller_game_email'] if seller else "Не указана"
