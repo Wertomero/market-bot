@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Market Bot</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, sans-serif; background: #1a1a2e; color: #eee; padding: 10px; }
+        .header { text-align: center; padding: 15px 0; font-size: 20px; font-weight: bold; color: #e94560; }
+        .tabs { display: flex; gap: 5px; margin: 10px 0; }
+        .tab { flex: 1; padding: 10px; text-align: center; background: #16213e; border-radius: 10px; cursor: pointer; font-size: 13px; }
+        .tab.active { background: #e94560; color: #fff; }
+        .list { max-height: 70vh; overflow-y: auto; }
+        .card { background: #16213e; border-radius: 12px; padding: 12px; margin: 8px 0; }
+        .card h3 { font-size: 16px; margin-bottom: 5px; }
+        .card p { font-size: 13px; color: #aaa; margin: 3px 0; }
+        .price { color: #e94560; font-weight: bold; font-size: 15px; }
+        .old-price { text-decoration: line-through; color: #888; font-size: 13px; margin-right: 5px; }
+        .btn { display: block; width: 100%; padding: 12px; border: none; border-radius: 10px; font-size: 15px; cursor: pointer; margin: 5px 0; }
+        .btn-primary { background: #e94560; color: #fff; }
+        .btn-secondary { background: #0f3460; color: #eee; }
+        .cart-item { display: flex; justify-content: space-between; align-items: center; }
+        .qty { display: flex; gap: 8px; align-items: center; }
+        .qty button { width: 30px; height: 30px; border-radius: 8px; border: none; font-size: 18px; cursor: pointer; background: #e94560; color: #fff; }
+        .total { font-size: 18px; font-weight: bold; text-align: right; padding: 10px 0; }
+        input { width: 100%; padding: 12px; border-radius: 10px; border: none; background: #0f3460; color: #fff; font-size: 15px; margin: 5px 0; }
+        .badge { background: #e94560; color: #fff; padding: 2px 8px; border-radius: 10px; font-size: 12px; margin-left: 5px; }
+    </style>
+</head>
+<body>
+    <div class="header">🛒 Market Bot</div>
+    
+    <div class="tabs" id="tabs">
+        <div class="tab active" data-tab="shops">🏪 Магазины</div>
+        <div class="tab" data-tab="cart">🛒 Корзина <span class="badge" id="cart-count">0</span></div>
+        <div class="tab" data-tab="orders">📦 Заказы</div>
+    </div>
+    
+    <div id="content" class="list"></div>
+    <div id="actions"></div>
+
+    <script>
+        const tg = window.Telegram.WebApp;
+        tg.expand();
+        
+        let currentTab = 'shops';
+        let shops = [], products = [], cart = [], orders = [], currentShop = null;
+        
+        function api(action, params = '') {
+            return fetch(`/api?action=${action}${params}`).then(r => r.json());
+        }
+        
+        async function loadData() {
+            const user = tg.initDataUnsafe?.user;
+            if (!user) return;
+            
+            if (currentTab === 'shops') {
+                shops = await api('shops');
+                renderShops();
+            } else if (currentTab === 'cart') {
+                cart = await api('cart', `&uid=${user.id}`);
+                renderCart();
+            } else if (currentTab === 'orders') {
+                orders = await api('orders', `&uid=${user.id}`);
+                renderOrders();
+            }
+        }
+        
+        function renderShops() {
+            let html = shops.map(s => `
+                <div class="card" onclick="openShop(${s.user_id}, '${s.shop_name}')">
+                    <h3>🏪 ${s.shop_name}</h3>
+                </div>
+            `).join('');
+            document.getElementById('content').innerHTML = html || '😔 Нет магазинов';
+        }
+        
+        async function openShop(shopId, shopName) {
+            currentShop = { id: shopId, name: shopName };
+            products = await api('products', `&seller_id=${shopId}`);
+            
+            let html = `<h3>🏪 ${shopName}</h3>`;
+            html += products.map(p => {
+                let priceHtml = `<span class="price">${p.price} ${p.currency}</span>`;
+                if (p.discounted) {
+                    priceHtml = `<span class="old-price">${p.price} ${p.currency}</span><span class="price">${p.discounted} ${p.currency} (-${p.discount_percent}%)</span>`;
+                }
+                return `
+                    <div class="card">
+                        <h3>${p.name} ${p.pack_qty > 1 ? `(x${p.pack_qty})` : ''}</h3>
+                        <p>${p.description || ''}</p>
+                        <p>${priceHtml}</p>
+                        <p>📦 В наличии: ${p.stock} шт</p>
+                        <button class="btn btn-primary" onclick="addToCart(${p.id})">🛒 В корзину</button>
+                    </div>
+                `;
+            }).join('');
+            html += `<button class="btn btn-secondary" onclick="currentShop=null;loadData();">🔙 К магазинам</button>`;
+            document.getElementById('content').innerHTML = html;
+        }
+        
+        async function addToCart(productId) {
+            const user = tg.initDataUnsafe?.user;
+            await api('add_cart', `&uid=${user.id}&pid=${productId}&qty=1`);
+            tg.showPopup({ title: '✅', message: 'Добавлено в корзину!' });
+        }
+        
+        async function renderCart() {
+            const user = tg.initDataUnsafe?.user;
+            let html = '<h3>🛒 Корзина</h3>';
+            let total = 0;
+            
+            cart.forEach(i => {
+                const price = i.discounted || i.price;
+                const itemTotal = price * i.quantity;
+                total += itemTotal;
+                html += `
+                    <div class="card cart-item">
+                        <div>
+                            <b>${i.name}</b> ${i.pack_qty > 1 ? `(x${i.pack_qty})` : ''}
+                            <br>${price} ${i.currency} x ${i.quantity} = ${itemTotal} ${i.currency}
+                        </div>
+                        <div class="qty">
+                            <button onclick="updateCart(${i.id}, ${i.quantity - 1})">−</button>
+                            <span>${i.quantity}</span>
+                            <button onclick="updateCart(${i.id}, ${i.quantity + 1})">+</button>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            html += `<div class="total">💰 Итого: ${total}</div>`;
+            if (cart.length > 0) {
+                html += `<button class="btn btn-primary" onclick="checkout()">✅ Оформить заказ</button>`;
+                html += `<button class="btn btn-secondary" onclick="clearCart()">🗑 Очистить</button>`;
+            } else {
+                html += '<p>Корзина пуста</p>';
+            }
+            
+            document.getElementById('content').innerHTML = html;
+            document.getElementById('cart-count').textContent = cart.length;
+        }
+        
+        async function updateCart(pid, qty) {
+            const user = tg.initDataUnsafe?.user;
+            await api('update_cart', `&uid=${user.id}&pid=${pid}&qty=${qty}`);
+            loadData();
+        }
+        
+        async function clearCart() {
+            const user = tg.initDataUnsafe?.user;
+            await api('clear_cart', `&uid=${user.id}`);
+            loadData();
+        }
+        
+        function checkout() {
+            document.getElementById('content').innerHTML = `
+                <h3>📧 Оформление заказа</h3>
+                <input type="text" id="email" placeholder="Введите игровую почту">
+                <button class="btn btn-primary" onclick="submitOrder()">Отправить</button>
+                <button class="btn btn-secondary" onclick="loadData()">🔙 Назад</button>
+            `;
+        }
+        
+        async function submitOrder() {
+            const user = tg.initDataUnsafe?.user;
+            const email = document.getElementById('email').value;
+            if (!email) { alert('Введите почту!'); return; }
+            await api('checkout', `&uid=${user.id}&email=${encodeURIComponent(email)}`);
+            tg.showPopup({ title: '✅', message: 'Заказ создан!' });
+            loadData();
+        }
+        
+        function renderOrders() {
+            const emoji = {pending: '⏳', accepted: '✅', ready: '🎉', rejected: '❌', cancelled: '🚫'};
+            let html = '<h3>📦 Мои заказы</h3>';
+            orders.forEach(o => {
+                html += `<div class="card"><p>🆔 №${o.id} — ${o.total_amount} | ${emoji[o.status] || '?'} ${o.status}</p></div>`;
+            });
+            document.getElementById('content').innerHTML = html || '📭 Нет заказов';
+        }
+        
+        document.getElementById('tabs').addEventListener('click', (e) => {
+            const tab = e.target.closest('.tab');
+            if (!tab) return;
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+            currentTab = tab.dataset.tab;
+            currentShop = null;
+            loadData();
+        });
+        
+        loadData();
+    </script>
+</body>
+  </html>
