@@ -1487,7 +1487,8 @@ async def product_name(msg: Message, state: FSMContext):
 
 @router.message(SellerStates.adding_product_description)
 async def product_description(msg: Message, state: FSMContext):
-    desc = msg.text.strip(); if desc == "-": desc = ""
+    desc = msg.text.strip(); 
+    if desc == "-": desc = ""
     await state.update_data(prod_description=desc)
     await msg.answer("📦 Кол-во в упаковке (1 = поштучно):"); await state.set_state(SellerStates.adding_product_pack_qty)
 
