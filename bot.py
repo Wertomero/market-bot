@@ -564,151 +564,142 @@ async def show_admin_panel(msg):
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🚫 Заблокировать магазин", callback_data="admin_block_shop")],
         [InlineKeyboardButton(text="✅ Разблокировать магазин", callback_data="admin_unblock_shop")],
-        [InlineKeyboardButton(text="🔍 Статистика магазина", callback_data="admin_view_shop")],
-        [InlineKeyboardButton(text="👤 Информация об игроке", callback_data="admin_view_player")],
-        [InlineKeyboardButton(text="📋 Список заблокированных", callback_data="admin_blocked_list")],
-        [InlineKeyboardButton(text="👥 Управление админами", callback_data="admin_manage_list")],
+        [InlineKeyboardButton(text="🔍 Поиск магазина", callback_data="admin_view_shop")],
+        [InlineKeyboardButton(text="👤 Поиск игрока", callback_data="admin_view_player")],
+        [InlineKeyboardButton(text="📋 Заблокированные", callback_data="admin_blocked_list")],
+        [InlineKeyboardButton(text="👥 Админы", callback_data="admin_manage_list")],
     ])
     await msg.answer("🔐 Админ-панель", reply_markup=kb)
 
+
+# Вспомогательная функция поиска
+def find_shop(query):
+    """Ищет магазин по ID или названию. Возвращает (shop_dict, stats_dict) или (None, None)"""
+    # Пробуем как ID
+    try:
+        uid = int(query)
+        shop = get_shop(uid)
+        if shop:
+            return shop, get_seller_stats(uid)
+    except:
+        pass
+    
+    # Ищем по названию
+    shops = search_shops(query)
+    if shops:
+        shop = get_shop(shops[0]['user_id'])
+        if shop:
+            return shop, get_seller_stats(shops[0]['user_id'])
+    
+    return None, None
+
+
+# Блокировка магазина
 @router.callback_query(F.data == "admin_block_shop")
 async def admin_block_shop(cb: CallbackQuery, state: FSMContext):
     if not is_admin(cb.from_user.id): await cb.answer("❌ Нет доступа!"); return
-    await cb.message.edit_text("Введите user_id или название магазина для блокировки:")
+    await cb.message.edit_text("Введите ID или название магазина для блокировки:")
     await state.set_state(AdminStates.waiting_for_block_shop)
 
 @router.message(AdminStates.waiting_for_block_shop)
 async def do_block_shop(msg: Message, state: FSMContext):
+    shop, _ = find_shop(msg.text.strip())
     await state.clear()
-    # Ищем по названию
-    shops = search_shops(msg.text.strip())
-    if shops:
-        if len(shops) == 1:
-            block_shop(shops[0]['user_id'])
-            await msg.answer(f"🚫 Магазин «{shops[0]['shop_name']}» заблокирован!")
-        else:
-            kb = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text=f"🚫 {s['shop_name']} (ID: {s['user_id']})", callback_data=f"block_shop_{s['user_id']}")] for s in shops
-            ])
-            await msg.answer("Найдено несколько магазинов. Выберите:", reply_markup=kb)
-        return
-    
-    # Пробуем как ID
-    try:
-        uid = int(msg.text.strip())
-        block_shop(uid)
-        await msg.answer(f"🚫 Магазин {uid} заблокирован!")
-    except:
+    if shop:
+        block_shop(shop['user_id'])
+        await msg.answer(f"🚫 Магазин «{shop['shop_name']}» (ID: {shop['user_id']}) заблокирован!")
+        await show_admin_panel(msg)
+    else:
         await msg.answer("❌ Магазин не найден!")
 
-@router.callback_query(F.data.startswith("block_shop_"))
-async def block_shop_by_id(cb: CallbackQuery):
-    uid = int(cb.data.split("_")[2])
-    block_shop(uid)
-    await cb.answer("🚫 Заблокировано!")
-    await cb.message.edit_text(f"🚫 Магазин {uid} заблокирован!")
 
+# Разблокировка магазина
 @router.callback_query(F.data == "admin_unblock_shop")
 async def admin_unblock_shop(cb: CallbackQuery, state: FSMContext):
     if not is_admin(cb.from_user.id): await cb.answer("❌ Нет доступа!"); return
-    await cb.message.edit_text("Введите user_id или название магазина для разблокировки:")
+    await cb.message.edit_text("Введите ID или название магазина для разблокировки:")
     await state.set_state(AdminStates.waiting_for_unblock_shop)
 
 @router.message(AdminStates.waiting_for_unblock_shop)
 async def do_unblock_shop(msg: Message, state: FSMContext):
+    shop, _ = find_shop(msg.text.strip())
     await state.clear()
-    shops = search_shops(msg.text.strip())
-    if shops:
-        if len(shops) == 1:
-            unblock_shop(shops[0]['user_id'])
-            await msg.answer(f"✅ Магазин «{shops[0]['shop_name']}» разблокирован!")
-        else:
-            kb = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text=f"✅ {s['shop_name']} (ID: {s['user_id']})", callback_data=f"unblock_shop_{s['user_id']}")] for s in shops
-            ])
-            await msg.answer("Найдено несколько магазинов. Выберите:", reply_markup=kb)
-        return
-    try:
-        uid = int(msg.text.strip())
-        unblock_shop(uid)
-        await msg.answer(f"✅ Магазин {uid} разблокирован!")
-    except:
+    if shop:
+        unblock_shop(shop['user_id'])
+        await msg.answer(f"✅ Магазин «{shop['shop_name']}» (ID: {shop['user_id']}) разблокирован!")
+        await show_admin_panel(msg)
+    else:
         await msg.answer("❌ Магазин не найден!")
 
-@router.callback_query(F.data.startswith("unblock_shop_"))
-async def unblock_shop_by_id(cb: CallbackQuery):
-    uid = int(cb.data.split("_")[2])
-    unblock_shop(uid)
-    await cb.answer("✅ Разблокировано!")
-    await cb.message.edit_text(f"✅ Магазин {uid} разблокирован!")
 
+# Поиск магазина
 @router.callback_query(F.data == "admin_view_shop")
 async def admin_view_shop(cb: CallbackQuery, state: FSMContext):
     if not is_admin(cb.from_user.id): await cb.answer("❌ Нет доступа!"); return
-    await cb.message.edit_text("Введите название магазина или user_id:")
+    await cb.message.edit_text("Введите ID или название магазина:")
     await state.set_state(AdminStates.waiting_for_view_shop)
 
 @router.message(AdminStates.waiting_for_view_shop)
 async def show_shop_stats(msg: Message, state: FSMContext):
+    shop, stats = find_shop(msg.text.strip())
     await state.clear()
-    
-    # Ищем по названию
-    shops = search_shops(msg.text.strip())
-    if shops:
-        for s in shops:
-            shop = get_shop(s['user_id'])
-            stats = get_seller_stats(s['user_id'])
-            text = f"📊 <b>«{s['shop_name']}»</b>\n👤 Владелец: ID {s['user_id']}\n📧 Почта: {shop['seller_game_email'] if shop else '—'}\n✅ Заказов: {stats['total_orders']}\n💰 Заработано: {stats['total_earned']}\n⏳ Активных: {stats['pending']}"
-            await msg.answer(text, parse_mode="HTML")
-        return
-    
-    # Пробуем как ID
-    try:
-        uid = int(msg.text.strip())
-        shop = get_shop(uid)
-        if shop:
-            stats = get_seller_stats(uid)
-            text = f"📊 <b>«{shop['shop_name']}»</b>\n👤 Владелец: ID {uid}\n📧 Почта: {shop['seller_game_email']}\n✅ Заказов: {stats['total_orders']}\n💰 Заработано: {stats['total_earned']}\n⏳ Активных: {stats['pending']}"
-            await msg.answer(text, parse_mode="HTML")
-        else:
-            await msg.answer("❌ Магазин не найден!")
-    except:
+    if shop:
+        text = (
+            f"📊 <b>Статистика магазина</b>\n\n"
+            f"🏪 Название: «{shop['shop_name']}»\n"
+            f"👤 Владелец: ID {shop['user_id']}\n"
+            f"📧 Почта: {shop['seller_game_email']}\n"
+            f"🔐 Пароль: {shop['shop_password']}\n\n"
+            f"✅ Выполнено заказов: <b>{stats['total_orders']}</b>\n"
+            f"💰 Заработано: <b>{stats['total_earned']}</b>\n"
+            f"⏳ Активных заказов: <b>{stats['pending']}</b>"
+        )
+        await msg.answer(text, parse_mode="HTML")
+    else:
         await msg.answer("❌ Магазин не найден!")
 
+
+# Поиск игрока
 @router.callback_query(F.data == "admin_view_player")
 async def admin_view_player(cb: CallbackQuery, state: FSMContext):
     if not is_admin(cb.from_user.id): await cb.answer("❌ Нет доступа!"); return
-    await cb.message.edit_text("Введите user_id игрока или название его магазина:")
+    await cb.message.edit_text("Введите ID игрока или название его магазина:")
     await state.set_state(AdminStates.waiting_for_view_player)
 
 @router.message(AdminStates.waiting_for_view_player)
 async def show_player_stats(msg: Message, state: FSMContext):
     await state.clear()
+    query = msg.text.strip()
+    uid = None
     
-    # Ищем магазин по названию — показываем владельца
-    shops = search_shops(msg.text.strip())
-    if shops:
-        for s in shops:
-            uid = s['user_id']
-            buyer = get_buyer_stats(uid)
-            seller = get_seller_stats(uid)
-            text = f"👤 <b>Игрок ID {uid}</b>\n🏪 Магазин: «{s['shop_name']}»\n\n🛒 <b>Покупки:</b>\n• Куплено: {buyer['total_bought']}\n• Потрачено: {buyer['total_spent']}\n• Активных: {buyer['pending']}\n\n🏪 <b>Продажи:</b>\n• Продаж: {seller['total_orders']}\n• Заработано: {seller['total_earned']}\n• Активных: {seller['pending']}"
-            await msg.answer(text, parse_mode="HTML")
-        return
-    
-    # Пробуем как ID
+    # Ищем магазин по названию — берём владельца
     try:
-        uid = int(msg.text.strip())
+        uid = int(query)
+    except:
+        shops = search_shops(query)
+        if shops:
+            uid = shops[0]['user_id']
+    
+    if uid:
         buyer = get_buyer_stats(uid)
         shop = get_shop(uid)
-        text = f"👤 <b>Игрок ID {uid}</b>\n\n🛒 <b>Покупки:</b>\n• Куплено: {buyer['total_bought']}\n• Потрачено: {buyer['total_spent']}\n• Активных: {buyer['pending']}"
+        seller = get_seller_stats(uid) if shop else None
+        
+        text = f"👤 <b>Информация об игроке</b>\n\n🆔 ID: {uid}\n\n"
+        text += f"🛒 <b>Как покупатель:</b>\n• Куплено заказов: {buyer['total_bought']}\n• Потрачено: {buyer['total_spent']}\n• Активных: {buyer['pending']}\n"
+        
         if shop:
-            seller = get_seller_stats(uid)
-            text += f"\n\n🏪 Магазин: «{shop['shop_name']}»\n📧 Почта: {shop['seller_game_email']}\n\n🏪 <b>Продажи:</b>\n• Продаж: {seller['total_orders']}\n• Заработано: {seller['total_earned']}\n• Активных: {seller['pending']}"
+            text += f"\n🏪 <b>Магазин:</b> «{shop['shop_name']}»\n📧 Почта: {shop['seller_game_email']}\n"
+            text += f"\n🏪 <b>Как продавец:</b>\n• Выполнено заказов: {seller['total_orders']}\n• Заработано: {seller['total_earned']}\n• Активных: {seller['pending']}"
+        else:
+            text += "\n🏪 Магазина нет"
+        
         await msg.answer(text, parse_mode="HTML")
-    except:
+    else:
         await msg.answer("❌ Игрок не найден!")
 
+
+# Список заблокированных
 @router.callback_query(F.data == "admin_blocked_list")
 async def admin_blocked_list(cb: CallbackQuery):
     if not is_admin(cb.from_user.id): await cb.answer("❌ Нет доступа!"); return
@@ -719,20 +710,22 @@ async def admin_blocked_list(cb: CallbackQuery):
         return
     text = "🚫 <b>Заблокированные магазины:</b>\n\n"
     for b in blocked:
-        text += f"• {b['user_id']} | {b['shop_name']} | {b['reason'] or '—'}\n"
+        text += f"• ID: {b['user_id']} | {b['shop_name']}\n"
     await cb.message.edit_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_admin")]]))
 
+
+# Управление админами
 @router.callback_query(F.data == "admin_manage_list")
 async def admin_manage_list(cb: CallbackQuery):
     if not is_admin(cb.from_user.id): await cb.answer("❌ Нет доступа!"); return
     admins = get_all_admins()
     text = "👥 <b>Администраторы:</b>\n\n"
     for a in admins:
-        text += f"• {a['user_id']} | @{a['username']}\n"
+        text += f"• ID: {a['user_id']} | @{a['username']}\n"
     kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="➕ Добавить админа", callback_data="admin_add_admin")],
-        [InlineKeyboardButton(text="➖ Удалить админа", callback_data="admin_remove_admin")],
+        [InlineKeyboardButton(text="➕ Добавить", callback_data="admin_add_admin")],
+        [InlineKeyboardButton(text="➖ Удалить", callback_data="admin_remove_admin")],
         [InlineKeyboardButton(text="🔙 Назад", callback_data="back_to_admin")],
     ])
     await cb.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
@@ -766,8 +759,7 @@ async def do_remove_admin(msg: Message, state: FSMContext):
         uid = int(msg.text.strip())
         if uid == CREATOR_ID:
             await msg.answer("❌ Нельзя удалить создателя!")
-            await state.clear()
-            return
+            await state.clear(); return
         remove_admin(uid)
         await state.clear()
         await msg.answer(f"✅ Админ {uid} удалён!")
