@@ -17,8 +17,8 @@ from aiogram.types import BotCommand, WebAppInfo
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 DB_URL = os.getenv("DB_URL")
 SUPPORT_USERNAME = "@Ilya11093"
-CREATOR_ID = 7989127445  # Замени на свой Telegram ID
-ADMIN_PASSWORD = "marketadmin2024"
+CREATOR_ID = 5091635656
+ADMIN_PASSWORD = "marketadmin2026"
 
 
 def get_conn():
