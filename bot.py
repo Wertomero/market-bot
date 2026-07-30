@@ -1922,14 +1922,101 @@ async def seller_inside_back(cb: CallbackQuery):
     await seller_inside_msg(cb.message, cb.from_user.id)
 
 
+from aiohttp import web
+import json
+
+# ========== API для WebApp ==========
+async def api_handler(request):
+    action = request.query.get('action', '')
+    uid = request.query.get('uid', '0')
+    
+    if action == 'shops':
+        shops = get_all_shops()
+        return web.json_response([dict(s) for s in shops])
+    
+    elif action == 'products':
+        seller_id = request.query.get('seller_id', '0')
+        prods = get_products(seller_id=int(seller_id))
+        result = []
+        for p in prods:
+            p = dict(p)
+            disc_price, disc_percent, _ = get_discounted_price(p['id'])
+            if disc_price:
+                p['discounted'] = disc_price
+                p['discount_percent'] = disc_percent
+            result.append(p)
+        return web.json_response(result)
+    
+    elif action == 'cart':
+        items = get_cart(int(uid))
+        result = []
+        for i in items:
+            i = dict(i)
+            disc_price, _, _ = get_discounted_price(i['id'])
+            i['discounted'] = disc_price
+            result.append(i)
+        return web.json_response(result)
+    
+    elif action == 'add_cart':
+        pid = request.query.get('pid', '0')
+        qty = int(request.query.get('qty', '1'))
+        add_to_cart(int(uid), int(pid), qty)
+        return web.json_response({'ok': True})
+    
+    elif action == 'update_cart':
+        pid = request.query.get('pid', '0')
+        qty = int(request.query.get('qty', '0'))
+        update_cart(int(uid), int(pid), qty)
+        return web.json_response({'ok': True})
+    
+    elif action == 'clear_cart':
+        clear_cart(int(uid))
+        return web.json_response({'ok': True})
+    
+    elif action == 'checkout':
+        email = request.query.get('email', '')
+        items = get_cart(int(uid))
+        total = get_cart_total(int(uid))
+        if items:
+            seller_id = items[0]['seller_id']
+            create_order(int(uid), seller_id, total, email, items)
+            clear_cart(int(uid))
+        return web.json_response({'ok': True})
+    
+    elif action == 'orders':
+        orders = get_buyer_orders(int(uid))
+        return web.json_response([dict(o) for o in orders])
+    
+    return web.json_response({'error': 'unknown action'})
+
+
+async def handle_webapp(request):
+    return web.FileResponse('webapp.html')
+
+
 async def main():
     logging.basicConfig(level=logging.INFO)
     init_db()
+    
     bot = Bot(token=BOT_TOKEN)
     await bot.set_my_commands([
         BotCommand(command="start", description="Главное меню"),
         BotCommand(command="help", description="Помощь"),
     ])
+    
+    # Веб-сервер
+    app = web.Application()
+    app.router.add_get('/', handle_webapp)
+    app.router.add_get('/api', api_handler)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    
+    port = int(os.getenv('PORT', 8000))
+    site = web.TCPSite(runner, '0.0.0.0', port)
+    await site.start()
+    print(f"Сайт запущен на порту {port}")
+    
+    # Запуск бота
     dp = Dispatcher(storage=MemoryStorage())
     dp.include_router(router)
     await dp.start_polling(bot)
