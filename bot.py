@@ -523,6 +523,7 @@ async def start(msg: Message):
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🛒 Я покупатель", callback_data="buyer")],
         [InlineKeyboardButton(text="🏪 Я продавец", callback_data="seller_menu")],
+        [InlineKeyboardButton(text="🌐 Открыть сайт", web_app=WebAppInfo(url=f"https://{os.getenv('RAILWAY_PUBLIC_DOMAIN', 'localhost')}"))],
         [InlineKeyboardButton(text="📋 Доска заданий", callback_data="task_board")],
         [InlineKeyboardButton(text="🏆 Топ продавцов", callback_data="top_shops")],
         [InlineKeyboardButton(text="📊 Моя статистика", callback_data="my_stats")],
