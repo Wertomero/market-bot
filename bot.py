@@ -523,7 +523,6 @@ async def start(msg: Message):
     kb = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🛒 Я покупатель", callback_data="buyer")],
         [InlineKeyboardButton(text="🏪 Я продавец", callback_data="seller_menu")],
-        [InlineKeyboardButton(text="🌐 Открыть сайт", web_app=WebAppInfo(url=f"https://{os.getenv('RAILWAY_PUBLIC_DOMAIN', 'localhost')}"))],
         [InlineKeyboardButton(text="📋 Доска заданий", callback_data="task_board")],
         [InlineKeyboardButton(text="🏆 Топ продавцов", callback_data="top_shops")],
         [InlineKeyboardButton(text="📊 Моя статистика", callback_data="my_stats")],
@@ -532,7 +531,7 @@ async def start(msg: Message):
     await msg.answer("Добро пожаловать! Кто вы?", reply_markup=kb)
 
 
-# ========== ДОСКА ЗАДАНИЙ (ПОЛНОСТЬЮ ПЕРЕПИСАНО) ==========
+# ========== ДОСКА ЗАДАНИЙ ==========
 @router.callback_query(F.data == "task_board")
 async def task_board(cb: CallbackQuery):
     kb = InlineKeyboardMarkup(inline_keyboard=[
@@ -570,7 +569,6 @@ async def task_detail(cb: CallbackQuery):
         await cb.answer("Задание не найдено")
         return
     
-    # Получаем почту продавца
     seller = get_shop(t['seller_id'])
     seller_contact = seller['seller_game_email'] if seller else "Не указана"
     
@@ -578,18 +576,15 @@ async def task_detail(cb: CallbackQuery):
     deadline_text = f"\n⏳ Срок: {t['deadline']}" if t['deadline'] else ""
     buyer_text = ""
     if t['buyer_id']:
-        buyer_text = f"\n👤 Взял: @{t['buyer_username'] or t['buyer_id']}"
+        buyer_text = f"\n👤 Взял: ID {t['buyer_id']}"
     
     text = f"📋 <b>Задание #{tid}</b>\n🏪 {t['shop_name']} (ID: {t['seller_id']})\n📧 Почта продавца: {seller_contact}\n{price_text}{deadline_text}{buyer_text}\n📝 {t['description']}"
     
     kb = []
-    # Если задание активно и это не продавец - можно откликнуться
     if t['status'] == 'active' and t['seller_id'] != cb.from_user.id:
         kb.append([InlineKeyboardButton(text="✋ Взяться за задание", callback_data=f"take_task_{tid}")])
-    # Если задание взято и это исполнитель - можно отметить выполненным
     if t['status'] == 'taken' and t['buyer_id'] == cb.from_user.id:
         kb.append([InlineKeyboardButton(text="✅ Отметить выполненным", callback_data=f"complete_task_{tid}")])
-    # Если это продавец
     if t['seller_id'] == cb.from_user.id:
         kb.append([InlineKeyboardButton(text="👀 Отклики", callback_data=f"task_responses_{tid}")])
         if t['status'] != 'closed':
@@ -598,13 +593,8 @@ async def task_detail(cb: CallbackQuery):
     await cb.message.edit_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
 
 
-# Взяться за задание (сразу закрепляет исполнителя)
 @router.callback_query(F.data.startswith("take_task_"))
 async def take_task(cb: CallbackQuery, bot: Bot):
-    if not has_shop(cb.from_user.id):
-        await cb.answer("❌ Только продавцы могут брать задания!")
-        return
-    
     tid = int(cb.data.split("_")[2])
     t = get_task(tid)
     if not t or t['status'] != 'active':
@@ -614,7 +604,6 @@ async def take_task(cb: CallbackQuery, bot: Bot):
         await cb.answer("❌ Нельзя взять своё задание!")
         return
     
-    # Закрепляем исполнителя
     conn = get_conn()
     c = conn.cursor()
     c.execute("UPDATE tasks SET status='taken', buyer_id=%s WHERE id=%s", (cb.from_user.id, tid))
@@ -622,10 +611,9 @@ async def take_task(cb: CallbackQuery, bot: Bot):
     
     await cb.answer("✅ Вы взялись за задание!")
     
-    # Уведомление продавцу
     try:
         await bot.send_message(t['seller_id'],
-            f"🔔 <b>Задание #{tid} взято!</b>\n👤 Исполнитель: @{cb.from_user.username or cb.from_user.id} (ID: {cb.from_user.id})\n\nСвяжитесь с исполнителем для уточнения деталей.",
+            f"🔔 <b>Задание #{tid} взято!</b>\n👤 Исполнитель: @{cb.from_user.username or cb.from_user.id} (ID: {cb.from_user.id})\n\nСвяжитесь с исполнителем.",
             parse_mode="HTML")
     except:
         pass
@@ -633,7 +621,6 @@ async def take_task(cb: CallbackQuery, bot: Bot):
     await task_detail(cb)
 
 
-# Отметить выполненным
 @router.callback_query(F.data.startswith("complete_task_"))
 async def complete_task(cb: CallbackQuery, state: FSMContext):
     tid = int(cb.data.split("_")[2])
@@ -644,67 +631,7 @@ async def complete_task(cb: CallbackQuery, state: FSMContext):
     
     await state.update_data(complete_tid=tid)
     await cb.message.edit_text("📧 Введите вашу игровую почту для связи с продавцом:")
-    await state.set_state(SellerStates.task_response_price)
-
-
-@router.message(SellerStates.task_response_price)
-async def complete_task_done(msg: Message, state: FSMContext, bot: Bot):
-    data = await state.get_data()
-    tid = data.get('complete_tid')
-    if not tid:
-        # Старая логика для отклика с ценой
-        try:
-            price = int(msg.text.strip())
-        except:
-            await msg.answer("❌ Число!")
-            return
-        await state.update_data(respond_price=price)
-        await msg.answer("💎 Введите название валюты:")
-        await state.set_state(SellerStates.task_response_currency)
-        return
-    
-    # Логика завершения задания
-    email = msg.text.strip()
-    conn = get_conn()
-    c = conn.cursor()
-    c.execute("UPDATE tasks SET status='completed', buyer_email=%s WHERE id=%s", (email, tid))
-    conn.close()
-    
-    t = get_task(tid)
-    await state.clear()
-    await msg.answer("✅ Задание отмечено выполненным! Продавец получит вашу почту.")
-    
-    # Уведомление продавцу
-    if t:
-        try:
-            await bot.send_message(t['seller_id'],
-                f"🎉 <b>Задание #{tid} выполнено!</b>\n👤 Исполнитель: @{msg.from_user.username or '—'}\n📧 Почта исполнителя: {email}\n\nСвяжитесь для завершения сделки.",
-                parse_mode="HTML")
-        except:
-            pass
-
-
-@router.message(SellerStates.task_response_currency)
-async def task_response_currency(msg: Message, state: FSMContext, bot: Bot):
-    data = await state.get_data()
-    tid = data.get('respond_tid')
-    if not tid:
-        await msg.answer("❌ Ошибка!")
-        await state.clear()
-        return
-    
-    add_task_response(tid, msg.from_user.id, data['respond_price'], msg.text.strip())
-    await state.clear()
-    await msg.answer("✅ Отклик отправлен! Продавец увидит ваше предложение.")
-    
-    t = get_task(tid)
-    if t:
-        try:
-            await bot.send_message(t['seller_id'],
-                f"🔔 <b>Новый отклик на задание #{tid}!</b>\n👤 @{msg.from_user.username or '—'}\n💰 {data['respond_price']} {msg.text.strip()}\n\nПроверьте отклики в меню задания.",
-                parse_mode="HTML")
-        except:
-            pass
+    await state.set_state(SellerStates.task_deadline)
 
 
 @router.callback_query(F.data == "create_task")
@@ -745,36 +672,36 @@ async def task_currency(msg: Message, state: FSMContext):
 
 
 @router.message(SellerStates.task_deadline)
-async def task_deadline(msg: Message, state: FSMContext):
-    email = msg.text.strip()
+async def task_deadline(msg: Message, state: FSMContext, bot: Bot):
     data = await state.get_data()
-    add_task(msg.from_user.id, data['task_description'], data['task_price'] if data['task_price'] > 0 else None, data.get('task_currency', ''), None)
-    await state.clear()
-    await msg.answer("✅ Задание создано и опубликовано на доске!")
-    await task_board(msg)
-
-
-@router.callback_query(F.data.startswith("respond_task_"))
-async def respond_task_start(cb: CallbackQuery, state: FSMContext, bot: Bot):
-    tid = int(cb.data.split("_")[2])
-    t = get_task(tid)
-    if not t:
-        await cb.answer("Задание не найдено")
-        return
-    if t['price'] and t['price'] > 0:
-        add_task_response(tid, cb.from_user.id, t['price'], t['currency'])
-        await cb.answer("✅ Отклик отправлен!")
-        await cb.message.edit_text("✅ Вы откликнулись на задание!")
-        try:
-            await bot.send_message(t['seller_id'], 
-                f"🔔 <b>Новый отклик на задание #{tid}!</b>\n👤 @{cb.from_user.username or '—'}\n💰 {t['price']} {t['currency']}\n\nПроверьте отклики в меню задания.",
-                parse_mode="HTML")
-        except:
-            pass
-        return
-    await state.update_data(respond_tid=tid)
-    await cb.message.edit_text("💰 Предложите вашу цену:")
-    await state.set_state(SellerStates.task_response_price)
+    
+    # Проверяем, это создание задания или завершение
+    if data.get('task_description'):
+        # Создание задания
+        add_task(msg.from_user.id, data['task_description'], data['task_price'] if data['task_price'] > 0 else None, data.get('task_currency', ''), None)
+        await state.clear()
+        await msg.answer("✅ Задание создано и опубликовано на доске!")
+        await task_board(msg)
+    elif data.get('complete_tid'):
+        # Завершение задания
+        tid = data['complete_tid']
+        email = msg.text.strip()
+        conn = get_conn()
+        c = conn.cursor()
+        c.execute("UPDATE tasks SET status='completed' WHERE id=%s", (tid,))
+        conn.close()
+        
+        t = get_task(tid)
+        await state.clear()
+        await msg.answer("✅ Задание отмечено выполненным! Продавец получит уведомление.")
+        
+        if t:
+            try:
+                await bot.send_message(t['seller_id'],
+                    f"🎉 <b>Задание #{tid} выполнено!</b>\n👤 Исполнитель: @{msg.from_user.username or '—'} (ID: {msg.from_user.id})\n📧 Почта: {email}\n\nСвяжитесь для завершения сделки.",
+                    parse_mode="HTML")
+            except:
+                pass
 
 
 @router.callback_query(F.data.startswith("task_responses_"))
@@ -782,9 +709,16 @@ async def task_responses(cb: CallbackQuery):
     tid = int(cb.data.split("_")[2])
     responses = get_task_responses(tid)
     if not responses:
-        await cb.message.edit_text("👀 Пока нет откликов.", reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="🔙 Назад", callback_data="my_tasks")]]))
+        await cb.answer("👀 Пока нет откликов")
+        await cb.message.edit_text(
+            "👀 <b>Отклики на задание:</b>\n\nПока никто не откликнулся.",
+            parse_mode="HTML",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="🔙 Назад", callback_data=f"task_{tid}")]
+            ])
+        )
         return
+    
     text = "👀 <b>Отклики на задание:</b>\n\n"
     kb = []
     for r in responses:
@@ -792,7 +726,7 @@ async def task_responses(cb: CallbackQuery):
         text += f"🆔 {r['id']} | @{r['username']} (ID: {r['buyer_id']}) | {status_text}\n💰 {r['price']} {r['currency']}\n\n"
         if r['status'] == 'pending':
             kb.append([InlineKeyboardButton(text=f"✅ Выбрать @{r['username']}", callback_data=f"accept_response_{r['id']}_{tid}")])
-    kb.append([InlineKeyboardButton(text="🔙 Назад", callback_data="my_tasks")])
+    kb.append([InlineKeyboardButton(text="🔙 Назад", callback_data=f"task_{tid}")])
     await cb.message.edit_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
 
 
@@ -801,12 +735,17 @@ async def accept_response(cb: CallbackQuery, bot: Bot):
     parts = cb.data.split("_")
     rid = int(parts[2])
     tid = int(parts[3])
+    
+    conn = get_conn()
+    c = conn.cursor(cursor_factory=RealDictCursor)
+    c.execute("SELECT buyer_id FROM task_responses WHERE id=%s", (rid,))
+    resp = c.fetchone()
+    if resp:
+        c.execute("UPDATE tasks SET status='taken', buyer_id=%s WHERE id=%s", (resp['buyer_id'], tid))
+    conn.close()
+    
     accept_task_response(rid, tid)
     await cb.answer("✅ Исполнитель выбран!")
-    conn = get_conn()
-    c = conn.cursor()
-    c.execute("UPDATE tasks SET buyer_id = (SELECT buyer_id FROM task_responses WHERE id=%s) WHERE id=%s", (rid, tid))
-    conn.close()
     
     conn = get_conn()
     c = conn.cursor(cursor_factory=RealDictCursor)
@@ -825,7 +764,10 @@ async def accept_response(cb: CallbackQuery, bot: Bot):
                 await bot.send_message(r['buyer_id'], f"❌ Ваш отклик на задание #{tid} отклонён.")
             except:
                 pass
-    await my_tasks(cb)
+    
+    await cb.message.edit_text("✅ Исполнитель выбран!", reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🔙 К моим заданиям", callback_data="my_tasks")]
+    ]))
 
 
 @router.callback_query(F.data.startswith("close_task_"))
@@ -853,7 +795,6 @@ async def my_tasks(cb: CallbackQuery):
         kb.append([InlineKeyboardButton(text=f"📋 Задание #{t['id']}", callback_data=f"task_{t['id']}")])
     kb.append([InlineKeyboardButton(text="🔙 Назад", callback_data="task_board")])
     await cb.message.edit_text(text, parse_mode="HTML", reply_markup=InlineKeyboardMarkup(inline_keyboard=kb))
-        
 
 
 # ========== HELP ==========
