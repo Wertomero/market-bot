@@ -486,8 +486,9 @@ def get_user_info(uid):
     conn = get_conn()
     c = conn.cursor(cursor_factory=RealDictCursor)
     c.execute("SELECT * FROM users WHERE user_id=%s", (uid,))
-    return c.fetchone()
-
+    r = c.fetchone()
+    conn.close()
+    return r
 
 class ShopSetup(StatesGroup):
     waiting_for_nickname = State()
