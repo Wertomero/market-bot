@@ -1,7 +1,9 @@
 import asyncio
 import os
 import logging
+import json
 import psycopg2
+from aiohttp import web
 from psycopg2.extras import RealDictCursor
 from datetime import datetime, timedelta
 from aiogram import Bot, Dispatcher, Router, F
@@ -10,7 +12,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
-from aiogram.types import BotCommand
+from aiogram.types import BotCommand, WebAppInfo
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 DB_URL = os.getenv("DB_URL")
